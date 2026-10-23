@@ -1,0 +1,5 @@
+node_modules
+.expo
+data
+server/__tests__
+src/domain/__tests__

@@ -1,0 +1,13 @@
+# Alternativa a "docker run": levanta el servidor con un solo comando (docker compose up -d).
+# Poné ADMIN_PASSWORD en un archivo ".env" junto a este (ADMIN_PASSWORD=una-clave-larga).
+services:
+  lamartina:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/data            # acá vive la base de datos: es lo que hay que respaldar
+    environment:
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Definí ADMIN_PASSWORD en el archivo .env}
+      TRUST_PROXY: "1"          # si va detrás de nginx/Caddy/Cloudflare Tunnel
