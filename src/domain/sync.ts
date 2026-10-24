@@ -24,6 +24,19 @@ export function mergeRemoteRound(local: Round | undefined, remote: Round, dirty:
   for (const [playerId, sheet] of Object.entries(remote.scores)) scores[playerId] = { ...sheet };
 
   if (local) {
+    // Si localmente ya se habilitó la Vuelta (18 hoyos) pero la respuesta remota era previa (9 hoyos),
+    // conservamos los hoyos 10..18 y cualquier puntaje ya cargado en ellos.
+    if (local.holes.length > remote.holes.length) {
+      for (const [playerId, localSheet] of Object.entries(local.scores)) {
+        for (const [holeStr, val] of Object.entries(localSheet)) {
+          const h = Number(holeStr);
+          if (h > remote.holes.length && val) {
+            scores[playerId] = { ...scores[playerId], [h]: val };
+          }
+        }
+      }
+    }
+
     for (const key of dirty) {
       const [playerId, holeStr] = [key.slice(0, key.lastIndexOf(':')), key.slice(key.lastIndexOf(':') + 1)];
       const hole = Number(holeStr);
@@ -34,9 +47,11 @@ export function mergeRemoteRound(local: Round | undefined, remote: Round, dirty:
 
   return {
     ...remote,
+    holes: local && local.holes.length > remote.holes.length ? local.holes : remote.holes,
     scores,
     currentHole: local?.currentHole ?? remote.currentHole,
     remote: true,
+    ...(local?.roundToken ? { roundToken: local.roundToken } : {}),
   };
 }
 
@@ -46,7 +61,7 @@ export function mergeRemoteRound(local: Round | undefined, remote: Round, dirty:
  * Se guarda en el teléfono: si se cierra la app sin señal, no se pierde nada.
  */
 export type Op =
-  | { kind: 'create' | 'finish' | 'reopen' | 'delete'; roundId: string }
+  | { kind: 'create' | 'back-nine' | 'finish' | 'reopen' | 'delete'; roundId: string }
   | { kind: 'cell'; roundId: string; playerId: string; hole: number; v: number };
 
 /** Anota que una celda cambió. Si ya estaba pendiente, sube su versión `v` (así sabemos si cambió mientras viajaba). */
@@ -57,8 +72,8 @@ export function queueCell(outbox: Op[], roundId: string, playerId: string, hole:
   return outbox.map((o, i) => (i === idx ? { ...existing, v: existing.v + 1 } : o));
 }
 
-/** Agrega una operación de ronda (crear, terminar…) sin repetirla. */
-export function queueRoundOp(outbox: Op[], kind: 'create' | 'finish' | 'reopen' | 'delete', roundId: string): Op[] {
+/** Agrega una operación de ronda (crear, extender a 18 hoyos, terminar…) sin repetirla. */
+export function queueRoundOp(outbox: Op[], kind: 'create' | 'back-nine' | 'finish' | 'reopen' | 'delete', roundId: string): Op[] {
   let next = outbox;
   if (kind === 'delete') next = outbox.filter((o) => o.roundId !== roundId || o.kind === 'create'); // borrar anula lo pendiente
   if (kind === 'finish') next = next.filter((o) => !(o.kind === 'reopen' && o.roundId === roundId));

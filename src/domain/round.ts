@@ -26,7 +26,7 @@ export function buildEighteenHoles(baseHoles: Hole[]): Hole[] {
 
 /** Extiende una ronda de 9 hoyos (Ida / OUT) agregando la Vuelta (IN, hoyos 10 a 18). */
 export function extendRoundWithBackNine(round: Round): Round {
-  if (round.holes.length > 9) return { ...round, currentHole: 10 };
+  if (round.holes.length > 9) return { ...round, currentHole: Math.max(10, round.currentHole) };
   const holes = buildEighteenHoles(round.holes);
   return {
     ...round,
@@ -195,7 +195,7 @@ export function teeOrder(round: Round, holeNumber: number): Player[] {
  * Las rondas que solo están en el celular (sin servidor) las edita quien las tiene.
  */
 export function canWriteRound(round: Round, userId: string | null | undefined, isAdmin = false): boolean {
-  if (!round.remote) return true;
+  if (!round.remote || round.roundToken) return true;
   if (!userId) return false;
   return isAdmin || round.createdBy === userId || round.players.some((p) => p.profileId === userId && p.accepted);
 }

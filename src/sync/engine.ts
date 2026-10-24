@@ -95,21 +95,30 @@ export async function startRound(
     return { ok: false, error: 'En modo Dúo completá los 2 jugadores de cada pareja.' };
   }
 
+  // Si no hay sesión abierta en el celular pero algún jugador inició sesión desde "Nueva ronda",
+  // usamos su token únicamente para registrar esta partida sin dejar su cuenta abierta en el teléfono.
+  const slotWithAuth = slots.find(
+    (s): s is Extract<PlayerSlot, { kind: 'registered' }> => s.kind === 'registered' && Boolean(s.roundAuthToken),
+  );
+  const effectiveToken = token ?? slotWithAuth?.roundAuthToken ?? null;
+  const effectiveCreatorId = me?.id ?? slotWithAuth?.userId;
+  const roundScopedToken = !token && slotWithAuth?.roundAuthToken ? slotWithAuth.roundAuthToken : undefined;
+
   const holes = holesCount === 18 ? buildEighteenHoles(config.course.holes) : config.course.holes;
   const local = createRound(holes, config.course.name, players, format, {
     mode,
     duoRule: config.duoRule,
-    createdBy: me?.id,
+    createdBy: effectiveCreatorId,
   });
 
-  if (!token || !me) {
+  if (!effectiveToken || !effectiveCreatorId) {
     store().addRound({ ...local, remote: false });
     return { ok: true, roundId: local.id };
   }
 
   try {
     const res = await api<{ round: Round }>('POST', '/rounds', {
-      token,
+      token: effectiveToken,
       body: {
         id: local.id,
         mode,
@@ -118,15 +127,26 @@ export async function startRound(
         players: built.map((p) => ({ id: p.id, name: p.name, profileId: p.profileId, joinToken: p.joinToken })),
       },
     });
-    store().addRound({ ...res.round, remote: true });
+    store().addRound({
+      ...res.round,
+      remote: true,
+      ...(roundScopedToken ? { roundToken: roundScopedToken } : {}),
+    });
     store().setOnline(true);
     return { ok: true, roundId: res.round.id };
   } catch (e) {
     if (e instanceof ApiError && e.network) {
       // Sin señal: solo se puede jugar offline si no hay otras personas registradas (hay que verificarlas en el servidor).
-      const others = players.some((p) => p.profileId && p.profileId !== me.id);
+      const others = players.some((p) => p.profileId && p.profileId !== effectiveCreatorId);
       if (others) return { ok: false, error: 'Para sumar jugadores registrados hace falta conexión. Probá de nuevo o jugá con invitados.' };
-      store().addRound({ ...local, remote: true }, true);
+      store().addRound(
+        {
+          ...local,
+          remote: true,
+          ...(roundScopedToken ? { roundToken: roundScopedToken } : {}),
+        },
+        true,
+      );
       store().setOnline(false);
       return { ok: true, roundId: local.id };
     }
@@ -137,16 +157,7 @@ export async function startRound(
 /** Extiende una ronda activa de 9 hoyos (Ida) agregando la Vuelta (hoyos 10 a 18). */
 export async function continueToBackNine(roundId: string): Promise<void> {
   store().startBackNine(roundId);
-  const { token, rounds } = store();
-  const round = rounds.find((r) => r.id === roundId);
-  if (token && round?.remote) {
-    try {
-      const res = await api<{ round: Round }>('POST', `/rounds/${roundId}/back-nine`, { token });
-      store().upsertRemoteRound({ ...res.round, currentHole: 10 });
-    } catch {
-      // queda guardado localmente
-    }
-  }
+  await syncOnce();
 }
 
 /** El jugador invitado acepta desde su celular. */
@@ -175,6 +186,39 @@ export async function verifyPlayer(userId: string, password: string): Promise<st
   return res.joinToken;
 }
 
+export interface VerifiedRoundPlayer {
+  joinToken: string;
+  user: Me;
+  token?: string;
+}
+
+/** Verifica usuario y contraseña desde Nueva Ronda para registrar la partida en la cuenta del jugador. */
+export async function verifyPlayerByCredentials(username: string, password: string): Promise<VerifiedRoundPlayer> {
+  // 1. Validamos usuario y contraseña con /auth/login (funciona con o sin sesión previa en el celular)
+  const loginRes = await api<AuthResponse>('POST', '/auth/login', {
+    body: { username: username.trim(), password },
+  });
+
+  // 2. Obtenemos el permiso de ronda (joinToken) usando el userId verificado para que quede confirmado en la partida
+  const authToken = store().token ?? loginRes.token;
+  let joinToken = '';
+  try {
+    const verifyRes = await api<{ joinToken: string }>('POST', '/auth/verify', {
+      token: authToken,
+      body: { userId: loginRes.user.id, username: username.trim(), password },
+    });
+    joinToken = verifyRes.joinToken;
+  } catch {
+    // Si el servidor usa la sesión directa del creador, no requiere joinToken adicional
+  }
+
+  return {
+    joinToken,
+    user: loginRes.user,
+    token: loginRes.token,
+  };
+}
+
 // ── Envío de lo pendiente ───────────────────────────────────────────────────
 let flushing = false;
 
@@ -187,9 +231,15 @@ export async function flush(): Promise<void> {
     for (let guard = 0; guard < 200; guard++) {
       const { token, outbox, rounds } = store();
       const op = outbox[0];
-      if (!token || !op) break;
+      if (!op) break;
       const round = rounds.find((r) => r.id === op.roundId);
+      const authToken = token ?? round?.roundToken ?? null;
       const drop = () => store().setOutbox((o) => o.filter((x) => x !== op));
+
+      if (!authToken) {
+        drop();
+        continue;
+      }
 
       try {
         if (!round && op.kind !== 'delete') {
@@ -198,14 +248,19 @@ export async function flush(): Promise<void> {
         }
         if (op.kind === 'create' && round) {
           const res = await api<{ round: Round }>('POST', '/rounds', {
-            token,
+            token: authToken,
             body: {
               id: round.id,
               mode: round.mode,
               format: round.format,
+              holesCount: round.holes.length === 18 ? 18 : undefined,
               players: round.players.map((p) => ({ id: p.id, name: p.name, profileId: p.profileId })),
             },
           });
+          drop();
+          store().upsertRemoteRound(res.round);
+        } else if (op.kind === 'back-nine') {
+          const res = await api<{ round: Round }>('POST', `/rounds/${op.roundId}/back-nine`, { token: authToken });
           drop();
           store().upsertRemoteRound(res.round);
         } else if (op.kind === 'cell' && round) {
@@ -214,19 +269,19 @@ export async function flush(): Promise<void> {
             const s = round.scores[c.playerId]?.[c.hole];
             return { playerId: c.playerId, hole: c.hole, kicks: s?.kicks ?? 0, penalties: s?.penalties ?? 0 };
           });
-          const res = await api<{ round: Round }>('POST', `/rounds/${op.roundId}/scores`, { token, body: { cells } });
+          const res = await api<{ round: Round }>('POST', `/rounds/${op.roundId}/scores`, { token: authToken, body: { cells } });
           store().setOutbox((o) => ackCells(o, sent));
           store().upsertRemoteRound(res.round);
         } else if (op.kind === 'finish') {
-          const res = await api<{ round: Round }>('POST', `/rounds/${op.roundId}/finish`, { token });
+          const res = await api<{ round: Round }>('POST', `/rounds/${op.roundId}/finish`, { token: authToken });
           drop();
           store().upsertRemoteRound(res.round);
         } else if (op.kind === 'reopen') {
-          const res = await api<{ round: Round }>('POST', `/rounds/${op.roundId}/reopen`, { token });
+          const res = await api<{ round: Round }>('POST', `/rounds/${op.roundId}/reopen`, { token: authToken });
           drop();
           store().upsertRemoteRound(res.round);
         } else if (op.kind === 'delete') {
-          await api('DELETE', `/rounds/${op.roundId}`, { token });
+          await api('DELETE', `/rounds/${op.roundId}`, { token: authToken });
           drop();
         }
         store().setOnline(true);
@@ -236,7 +291,11 @@ export async function flush(): Promise<void> {
           break; // sin señal: la cola queda como está y se reintenta
         }
         if (e instanceof ApiError && e.status === 401) {
-          store().clearSession();
+          if (token && authToken === token) {
+            store().clearSession();
+          } else {
+            drop();
+          }
           break;
         }
         // Error "de negocio" (la ronda ya terminó, no existe, no tenés permiso…): se descarta para no trabar la cola.

@@ -131,8 +131,20 @@ export function buildDuoRanking(
       const pb = profiles.find((p) => p.id === b.profileId);
       if (!pa || !pb) continue;
 
-      const totals = duoPairTotals(round, [a, b], round.duoRule ?? fallbackRule);
-      if (totals.holesPlayed < round.holes.length) continue; // ronda incompleta
+      const rule = round.duoRule ?? fallbackRule;
+      const totals = duoPairTotals(round, [a, b], rule);
+      const fullComplete = totals.holesPlayed === round.holes.length;
+      const frontHoles = round.holes.filter((h) => h.number <= 9);
+      const frontComplete =
+        round.holes.length > 9 &&
+        frontHoles.length === 9 &&
+        frontHoles.every((h) => isScored(round.scores[a.id]?.[h.number]) && isScored(round.scores[b.id]?.[h.number]));
+
+      if (!fullComplete && !frontComplete) continue; // ni la ronda entera ni la Ida están completas
+
+      const frontPar = frontHoles.reduce((s, h) => s + (rule === 'best' ? h.par : h.par * 2), 0);
+      const effectiveStrokes = fullComplete ? totals.strokes : totals.frontStrokes;
+      const effectiveToPar = fullComplete ? totals.toPar : totals.frontStrokes - frontPar;
 
       const sorted: [Profile, Profile] = pa.id < pb.id ? [pa, pb] : [pb, pa];
       const key = `${sorted[0].id}+${sorted[1].id}`;
@@ -142,11 +154,11 @@ export function buildDuoRanking(
         acc.set(key, e);
       }
       e.rounds += 1;
-      e.sum += totals.toPar;
-      e.cardPoints.push(cardPointsFromToPar(totals.toPar));
-      if (totals.toPar < e.best) {
-        e.best = totals.toPar;
-        e.bestStrokes = totals.strokes;
+      e.sum += effectiveToPar;
+      e.cardPoints.push(cardPointsFromToPar(effectiveToPar));
+      if (effectiveToPar < e.best) {
+        e.best = effectiveToPar;
+        e.bestStrokes = effectiveStrokes;
       }
     }
   }

@@ -6,7 +6,15 @@ import { DEFAULT_CONFIG } from '../../config/defaults';
 import { buildDemoData } from '../demo';
 import { buildDuoRanking, duoTotals } from '../duo';
 import { buildRanking } from '../ranking';
-import { adjustKicks, buildPlayers, createRound } from '../round';
+import {
+  adjustKicks,
+  buildPlayers,
+  canWriteRound,
+  createRound,
+  extendRoundWithBackNine,
+  isHoleComplete,
+  isRoundComplete,
+} from '../round';
 import { ackCells, cellKey, dirtyKeys, mergeRemoteRound, queueCell, queueRoundOp, type Op } from '../sync';
 import type { Profile, Round } from '../types';
 
@@ -122,6 +130,56 @@ describe('sincronización', () => {
     const remote = { ...base, currentHole: 1 };
     assert.equal(mergeRemoteRound(local, remote, new Set()).currentHole, 2);
   });
+
+  it('al extender localmente a 18 hoyos (Vuelta), una respuesta previa de 9 hoyos no borra los hoyos 10..18 ni sus puntajes', () => {
+    const nineHoles = DEFAULT_CONFIG.course.holes;
+    let r9 = createRound(nineHoles, 'Cancha', [p1], 'stroke');
+    for (let h = 1; h <= 9; h++) r9 = setKicks(r9, p1.id, h, 3);
+    // El jugador pasa a la Vuelta (18 hoyos) y anota del 10 al 18 mientras llega una respuesta remota que aún tenía 9 hoyos
+    let local18 = extendRoundWithBackNine(r9);
+    for (let h = 10; h <= 18; h++) local18 = setKicks(local18, p1.id, h, 3);
+    const merged = mergeRemoteRound(local18, r9, new Set());
+    assert.equal(merged.holes.length, 18);
+    assert.equal(isRoundComplete(merged), true);
+  });
+
+  it('conserva roundToken al combinar con el servidor y permite anotar sin dejar sesión abierta en el celular', () => {
+    const localWithToken = { ...base, remote: true, roundToken: 'tok-temporal-ronda' };
+    const remoteFromServer = { ...base, remote: true, rev: 2 };
+    const merged = mergeRemoteRound(localWithToken, remoteFromServer, new Set());
+    assert.equal(merged.roundToken, 'tok-temporal-ronda');
+    // Sin sesión en el celular (userId = null), roundToken habilita anotar en esa ronda únicamente
+    assert.equal(canWriteRound(merged, null, false), true);
+    // Una ronda remota común sin roundToken ni sesión no deja escribir
+    assert.equal(canWriteRound(remoteFromServer, null, false), false);
+  });
+
+  it('detecta completitud exacta en Hoyo 9 (Ida) y Hoyo 18 (Vuelta) recién cuando todos anotaron', () => {
+    const nineHoles = DEFAULT_CONFIG.course.holes;
+    let r = createRound(nineHoles, 'La Martina', [p1, p2], 'stroke');
+    for (let h = 1; h <= 8; h++) {
+      r = setKicks(r, p1.id, h, 3);
+      r = setKicks(r, p2.id, h, 3);
+    }
+    // En el hoyo 9, si solo anotó el jugador 1, la línea del 9 NO está completa
+    r = setKicks(r, p1.id, 9, 4);
+    assert.equal(isHoleComplete(r, 9), false);
+    // Recién cuando anota también el jugador 2 se completa la Ida
+    r = setKicks(r, p2.id, 9, 4);
+    assert.equal(isHoleComplete(r, 9), true);
+
+    // Al extender a 18 hoyos (Vuelta), la ronda vuelve a estar incompleta hasta que todos anoten el 18
+    r = extendRoundWithBackNine(r);
+    assert.equal(isRoundComplete(r), false);
+    for (let h = 10; h <= 17; h++) {
+      r = setKicks(r, p1.id, h, 3);
+      r = setKicks(r, p2.id, h, 3);
+    }
+    r = setKicks(r, p1.id, 18, 4);
+    assert.equal(isRoundComplete(r), false);
+    r = setKicks(r, p2.id, 18, 4);
+    assert.equal(isRoundComplete(r), true);
+  });
 });
 
 describe('validación de la configuración', () => {
@@ -152,6 +210,9 @@ describe('validación de la configuración', () => {
     assert.equal(sanitizeVenue({ gate: { lat: 200, lng: 0 } }, DEFAULT_CONFIG.venue).ok, false);
     assert.equal(sanitizeVenue({ route: [{ lat: 1, lng: 2 }, { lat: 'x', lng: 3 }] }, DEFAULT_CONFIG.venue).ok, false);
     assert.equal(sanitizeVenue({ name: '   ' }, DEFAULT_CONFIG.venue).ok, false);
+    // Verifica que el camino y el área del predio estén cargados por defecto
+    assert.ok(DEFAULT_CONFIG.venue.route.length >= 2);
+    assert.ok(DEFAULT_CONFIG.venue.predio.length >= 3);
   });
 });
 

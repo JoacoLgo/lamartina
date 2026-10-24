@@ -133,9 +133,13 @@ export const useAppStore = create<AppState>()(
       goToHole: (roundId, hole) => set((s) => ({ rounds: updateRound(s.rounds, roundId, (r) => ({ ...r, currentHole: hole })) })),
 
       startBackNine: (roundId) =>
-        set((s) => ({
-          rounds: updateRound(s.rounds, roundId, (r) => extendRoundWithBackNine(r)),
-        })),
+        set((s) => {
+          const round = s.rounds.find((r) => r.id === roundId);
+          return {
+            rounds: updateRound(s.rounds, roundId, (r) => extendRoundWithBackNine(r)),
+            outbox: round?.remote ? queueRoundOp(s.outbox, 'back-nine', roundId) : s.outbox,
+          };
+        }),
 
       finishRound: (roundId) =>
         set((s) => {
@@ -174,6 +178,33 @@ export const useAppStore = create<AppState>()(
       version: 3, // v1: canchas elegibles · v2: perfiles locales · v3: cuentas en el servidor
       storage: createJSONStorage(() => AsyncStorage),
       partialize: ({ online: _online, ...rest }) => rest as unknown as AppState,
+      merge: (persistedState, currentState) => {
+        const persisted = (persistedState ?? {}) as Partial<AppState>;
+        const persistedVenue = persisted.config?.venue;
+        const mergedConfig: AppConfig = persisted.config
+          ? {
+              ...DEFAULT_CONFIG,
+              ...persisted.config,
+              venue: {
+                ...DEFAULT_CONFIG.venue,
+                ...persistedVenue,
+                route:
+                  persistedVenue?.route && persistedVenue.route.length > 0
+                    ? persistedVenue.route
+                    : DEFAULT_CONFIG.venue.route,
+                predio:
+                  persistedVenue?.predio && persistedVenue.predio.length > 0
+                    ? persistedVenue.predio
+                    : DEFAULT_CONFIG.venue.predio,
+              },
+            }
+          : currentState.config;
+        return {
+          ...currentState,
+          ...persisted,
+          config: mergedConfig,
+        };
+      },
       migrate: (persisted, version) => {
         const old = (persisted ?? {}) as Record<string, unknown>;
         if (version < 3) {

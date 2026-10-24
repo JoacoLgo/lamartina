@@ -1,24 +1,24 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Avatar } from '@/components/Avatar';
 import { Button } from '@/components/Button';
 import { Card } from '@/components/Card';
 import { Podium, type PodiumEntry } from '@/components/Podium';
 import { Screen } from '@/components/Screen';
-import { Segmented } from '@/components/Segmented';
 import { MIN_ROUNDS_FOR_AVERAGE } from '@/domain/constants';
 import { MAX_COUNTED_CARDS } from '@/domain/ranking';
 import { formatToPar } from '@/domain/scoring';
 import { api, avatarUrl } from '@/lib/api';
 import { useAppStore } from '@/store/useAppStore';
-import { colors, fonts, radius, space, type } from '@/theme';
+import { colors, fonts, radius, shadow, space, type } from '@/theme';
 
 type Mode = 'individual' | 'duo';
 type Period = 'today' | 'month' | 'all';
 type Kind = 'best' | 'average' | 'points' | 'aces';
+type FilterColumn = 'period' | 'mode' | 'kind';
 
 interface Person { userId: string; name: string; avatarV: number | null }
 interface Stats { rounds: number; bestStrokes: number; bestToPar: number; avgToPar: number; points: number; aces: number }
@@ -85,6 +85,7 @@ export default function RankingScreen() {
   const [offline, setOffline] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const [showProInfo, setShowProInfo] = useState(false);
+  const [activeDropdown, setActiveDropdown] = useState<FilterColumn | null>(null);
 
   const effectiveKind: Kind = mode === 'duo' && kind === 'aces' ? 'best' : kind;
   const queryKey = `${mode}|${effectiveKind}|${period}|${token ? 'u' : 'g'}`;
@@ -137,29 +138,169 @@ export default function RankingScreen() {
         ? `Todavía no hay dúos ${PERIOD_TEXT[period]}. Juegan dos jugadores registrados una ronda completa en modo Dúo y entran.`
         : `Todavía no hay nadie ${PERIOD_TEXT[period]}. Jugá una ronda completa con tu perfil y aparecés.`;
 
+  const periodLabel = PERIODS.find((p) => p.value === period)?.label ?? 'Histórico';
+  const modeLabel = MODES.find((m) => m.value === mode)?.label ?? 'Individual';
+  const kindOptions = mode === 'duo' ? KINDS_DUO : KINDS_IND;
+  const kindLabel = kindOptions.find((k) => k.value === effectiveKind)?.label ?? 'Mejor';
+
   return (
     <Screen>
-      <View style={styles.header}>
-        <Text style={type.label}>Ranking de la cancha</Text>
-        <Text style={type.title}>Los mejores de La Martina</Text>
+      <View style={styles.headerRow}>
+        <View style={styles.flex}>
+          <Text style={type.label}>Ranking de la cancha</Text>
+          <Text style={styles.titleCompact}>Los mejores de La Martina</Text>
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Información del sistema de puntos"
+          onPress={() => setShowProInfo((v) => !v)}
+          style={styles.infoPill}>
+          <Ionicons name="information-circle-outline" size={16} color={colors.forest} />
+          <Text style={styles.infoPillText}>Reglas</Text>
+        </Pressable>
       </View>
 
-      <Segmented options={MODES} value={mode} onChange={setMode} />
-      <Segmented options={PERIODS} value={period} onChange={setPeriod} />
-      <Segmented options={mode === 'duo' ? KINDS_DUO : KINDS_IND} value={effectiveKind} onChange={setKind} />
-      {offline ? <Text style={styles.offline}>Sin conexión: se muestra lo último que se pudo cargar.</Text> : null}
+      {/* Barra única de filtros en 3 columnas: | HISTÓRICO | INDIVIDUAL | MEJOR | */}
+      <View style={styles.filterColumnsWrap}>
+        <View style={styles.filterBar}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setActiveDropdown((c) => (c === 'period' ? null : 'period'))}
+            style={[styles.filterCell, activeDropdown === 'period' && styles.filterCellActive]}>
+            <Text style={styles.filterCellKicker}>PERÍODO</Text>
+            <View style={styles.filterCellValRow}>
+              <Text style={styles.filterCellVal} numberOfLines={1}>
+                {periodLabel}
+              </Text>
+              <Ionicons
+                name={activeDropdown === 'period' ? 'chevron-up' : 'chevron-down'}
+                size={14}
+                color={colors.goldDark}
+              />
+            </View>
+          </Pressable>
 
-      {/* EXPLICACIÓN DEL SISTEMA PROFESIONAL FIFG / AAFG */}
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => setShowProInfo((v) => !v)}
-        style={styles.proInfoToggle}>
-        <Ionicons name="information-circle-outline" size={18} color={colors.forest} />
-        <Text style={styles.proInfoToggleText}>
-          ¿Cómo se ranquea en el Footgolf Profesional (AAFG / FIFG)?
-        </Text>
-        <Ionicons name={showProInfo ? 'chevron-up' : 'chevron-down'} size={16} color={colors.forest} />
-      </Pressable>
+          <View style={styles.filterVertDivider} />
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setActiveDropdown((c) => (c === 'mode' ? null : 'mode'))}
+            style={[styles.filterCell, activeDropdown === 'mode' && styles.filterCellActive]}>
+            <Text style={styles.filterCellKicker}>MODO</Text>
+            <View style={styles.filterCellValRow}>
+              <Text style={styles.filterCellVal} numberOfLines={1}>
+                {modeLabel}
+              </Text>
+              <Ionicons
+                name={activeDropdown === 'mode' ? 'chevron-up' : 'chevron-down'}
+                size={14}
+                color={colors.goldDark}
+              />
+            </View>
+          </Pressable>
+
+          <View style={styles.filterVertDivider} />
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setActiveDropdown((c) => (c === 'kind' ? null : 'kind'))}
+            style={[styles.filterCell, activeDropdown === 'kind' && styles.filterCellActive]}>
+            <Text style={styles.filterCellKicker}>CRITERIO</Text>
+            <View style={styles.filterCellValRow}>
+              <Text style={styles.filterCellVal} numberOfLines={1}>
+                {kindLabel}
+              </Text>
+              <Ionicons
+                name={activeDropdown === 'kind' ? 'chevron-up' : 'chevron-down'}
+                size={14}
+                color={colors.goldDark}
+              />
+            </View>
+          </Pressable>
+        </View>
+
+        {/* Menú desplegable al tocar cualquiera de las 3 columnas (tocar afuera también lo cierra) */}
+        <Modal
+          transparent
+          visible={activeDropdown !== null}
+          animationType="fade"
+          onRequestClose={() => setActiveDropdown(null)}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Cerrar opciones de filtro"
+            onPress={() => setActiveDropdown(null)}
+            style={styles.dropdownBackdrop}>
+            <View style={styles.dropdownModalSlot}>
+              <View style={styles.dropdownMenu}>
+                {activeDropdown === 'period'
+                  ? PERIODS.map((opt) => {
+                      const sel = opt.value === period;
+                      return (
+                        <Pressable
+                          key={opt.value}
+                          accessibilityRole="menuitem"
+                          onPress={() => {
+                            setPeriod(opt.value);
+                            setActiveDropdown(null);
+                          }}
+                          style={[styles.dropdownOption, sel && styles.dropdownOptionSelected]}>
+                          <Text style={[styles.dropdownOptionText, sel && styles.dropdownOptionTextSelected]}>
+                            {opt.label}
+                          </Text>
+                          {sel ? <Ionicons name="checkmark-circle" size={18} color={colors.forest} /> : null}
+                        </Pressable>
+                      );
+                    })
+                  : null}
+
+                {activeDropdown === 'mode'
+                  ? MODES.map((opt) => {
+                      const sel = opt.value === mode;
+                      return (
+                        <Pressable
+                          key={opt.value}
+                          accessibilityRole="menuitem"
+                          onPress={() => {
+                            setMode(opt.value);
+                            setActiveDropdown(null);
+                          }}
+                          style={[styles.dropdownOption, sel && styles.dropdownOptionSelected]}>
+                          <Text style={[styles.dropdownOptionText, sel && styles.dropdownOptionTextSelected]}>
+                            {opt.label}
+                          </Text>
+                          {sel ? <Ionicons name="checkmark-circle" size={18} color={colors.forest} /> : null}
+                        </Pressable>
+                      );
+                    })
+                  : null}
+
+                {activeDropdown === 'kind'
+                  ? kindOptions.map((opt) => {
+                      const sel = opt.value === effectiveKind;
+                      return (
+                        <Pressable
+                          key={opt.value}
+                          accessibilityRole="menuitem"
+                          onPress={() => {
+                            setKind(opt.value);
+                            setActiveDropdown(null);
+                          }}
+                          style={[styles.dropdownOption, sel && styles.dropdownOptionSelected]}>
+                          <Text style={[styles.dropdownOptionText, sel && styles.dropdownOptionTextSelected]}>
+                            {opt.label}
+                          </Text>
+                          {sel ? <Ionicons name="checkmark-circle" size={18} color={colors.forest} /> : null}
+                        </Pressable>
+                      );
+                    })
+                  : null}
+              </View>
+            </View>
+          </Pressable>
+        </Modal>
+      </View>
+
+      {offline ? <Text style={styles.offline}>Sin conexión: se muestra lo último que se pudo cargar.</Text> : null}
 
       {showProInfo ? (
         <Card style={styles.proInfoCard}>
@@ -169,7 +310,7 @@ export default function RankingScreen() {
             <Text style={styles.bold}>FIFG y la AAFG</Text>, cada ronda se mide en formato <Text style={styles.bold}>Medal / Stroke Play respecto al Par</Text> de la cancha (ej. -2, E, +3). Si hay empate en una ronda, se desempata por <Text style={styles.bold}>Countback oficial</Text> (mejor Vuelta / últimos 9 hoyos IN, últimos 6, últimos 3 y último hoyo).
           </Text>
           <Text style={type.small}>
-            • <Text style={styles.bold}>Puntos Pro (Escala del 92% AAFG):</Text> En el Ranking Argentino de Footgolf (AAFG), cada fecha jugada entrega puntos con la <Text style={styles.bold}>fórmula del 92%</Text> (el mejor recibe el 100% y cada escalón siguiente el 92% del anterior), sumando únicamente las <Text style={styles.bold}>mejores {MAX_COUNTED_CARDS} tarjetas</Text> de cada jugador. Así, jugar seguido suma hasta tu tope de mejores tarjetas sin que un mal día te baje el puntaje.
+            • <Text style={styles.bold}>Puntos Pro (Escala del 92% AAFG):</Text> En el Ranking Argentino de Footgolf (AAFG), cada fecha jugada entrega puntos con la <Text style={styles.bold}>fórmula del 92%</Text> (el mejor recibe el 100% y cada escalón siguiente el 92% del anterior), sumando únicamente las <Text style={styles.bold}>mejores {MAX_COUNTED_CARDS} tarjetas</Text> de cada jugador.
           </Text>
         </Card>
       ) : null}
@@ -317,25 +458,120 @@ export default function RankingScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  header: { gap: space.xs },
-  offline: { ...type.small, textAlign: 'center', color: colors.goldDark },
-  proInfoToggle: {
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: radius.md,
+    justifyContent: 'space-between',
+    gap: space.sm,
+  },
+  titleCompact: {
+    fontFamily: fonts.serif,
+    fontSize: 23,
+    fontWeight: '700',
+    color: colors.ink,
+  },
+  infoPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: radius.pill,
     backgroundColor: colors.cream,
     borderWidth: 1,
     borderColor: colors.gold,
   },
-  proInfoToggleText: {
-    flex: 1,
-    fontSize: 13,
+  infoPillText: {
+    fontSize: 12,
     fontWeight: '700',
     color: colors.forest,
   },
+  filterColumnsWrap: {
+    position: 'relative',
+    zIndex: 30,
+  },
+  filterBar: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1.5,
+    borderColor: colors.gold,
+    overflow: 'hidden',
+  },
+  filterCell: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    gap: 2,
+    justifyContent: 'center',
+  },
+  filterCellActive: {
+    backgroundColor: colors.cream,
+  },
+  filterVertDivider: {
+    width: 1,
+    backgroundColor: colors.line,
+  },
+  filterCellKicker: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1,
+    color: colors.goldDark,
+  },
+  filterCellValRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 4,
+  },
+  filterCellVal: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    color: colors.forest,
+    flexShrink: 1,
+  },
+  dropdownBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(10, 32, 20, 0.18)',
+    alignItems: 'center',
+    paddingTop: 148,
+  },
+  dropdownModalSlot: {
+    width: '100%',
+    maxWidth: 480,
+    paddingHorizontal: space.md,
+  },
+  dropdownMenu: {
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1.5,
+    borderColor: colors.gold,
+    overflow: 'hidden',
+    ...shadow,
+  },
+  dropdownOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.line,
+  },
+  dropdownOptionSelected: {
+    backgroundColor: colors.cream,
+  },
+  dropdownOptionText: {
+    fontSize: 14.5,
+    fontWeight: '600',
+    color: colors.ink,
+  },
+  dropdownOptionTextSelected: {
+    fontWeight: '800',
+    color: colors.forest,
+  },
+  offline: { ...type.small, textAlign: 'center', color: colors.goldDark },
   proInfoCard: {
     borderColor: colors.gold,
     borderWidth: 1.5,

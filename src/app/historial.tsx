@@ -8,7 +8,7 @@ import { Card } from '@/components/Card';
 import { Screen } from '@/components/Screen';
 import { Segmented } from '@/components/Segmented';
 import { formatInfo } from '@/domain/formats';
-import { formatToPar, leaderboard, playerTotals } from '@/domain/scoring';
+import { formatToPar, holeTotal, isScored, leaderboard, playerTotals } from '@/domain/scoring';
 import { playerStats, standingsText } from '@/domain/stats';
 import type { Round } from '@/domain/types';
 import { api } from '@/lib/api';
@@ -17,6 +17,11 @@ import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radius, space, type } from '@/theme';
 
 type Filter = 'all' | 'individual' | 'duo';
+
+interface MeRanking {
+  position: number | null;
+  total: number;
+}
 
 function formatDate(ts: number): string {
   return new Date(ts).toLocaleDateString('es-AR', {
@@ -37,10 +42,36 @@ function CounterBox({ label, value, sub }: { label: string; value: string; sub?:
   );
 }
 
+function DistBar({
+  label,
+  count,
+  total,
+  barColor,
+}: {
+  label: string;
+  count: number;
+  total: number;
+  barColor: string;
+}) {
+  const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+  return (
+    <View style={styles.distRow}>
+      <Text style={styles.distLabel}>{label}</Text>
+      <View style={styles.distTrack}>
+        <View style={[styles.distFill, { width: `${Math.max(pct, count > 0 ? 6 : 0)}%`, backgroundColor: barColor }]} />
+      </View>
+      <Text style={styles.distValue}>
+        {count} <Text style={styles.distPct}>({pct}%)</Text>
+      </Text>
+    </View>
+  );
+}
+
 /**
- * HISTORIAL DE PARTIDAS Y CONTADOR PERSONAL
- * Permite a quienes juegan a diario o están registrados llevar la cuenta de sus rondas,
- * patadas acumuladas, promedio, golpes bajo par y revisar cómo les fue en cada partida.
+ * MI TRAYECTORIA
+ * Muestra la evolución del jugador desde que comenzó a registrar sus partidas,
+ * estadísticas detalladas de cómo jugó (distribución de golpes, mejores hoyos)
+ * y el historial completo de tarjetas.
  */
 export default function HistoryScreen() {
   const router = useRouter();
@@ -50,6 +81,7 @@ export default function HistoryScreen() {
   const upsertRemoteRound = useAppStore((s) => s.upsertRemoteRound);
   const deleteRound = useAppStore((s) => s.deleteRound);
   const [filter, setFilter] = useState<Filter>('all');
+  const [rankingPos, setRankingPos] = useState<MeRanking | null>(null);
 
   useEffect(() => {
     if (!me) {
@@ -61,6 +93,9 @@ export default function HistoryScreen() {
       .then((res) => {
         for (const r of res.rounds) upsertRemoteRound(r);
       })
+      .catch(() => undefined);
+    api<{ ranking: MeRanking | null }>('GET', '/me', { token })
+      .then((res) => setRankingPos(res.ranking))
       .catch(() => undefined);
   }, [me, router, token, upsertRemoteRound]);
 
@@ -81,8 +116,8 @@ export default function HistoryScreen() {
     [finished, filter],
   );
 
-  // Contador personal (toma al usuario logueado o al Jugador 1 si juega sin cuenta)
-  const personalSummary = useMemo(() => {
+  // Estadísticas acumuladas y análisis de juego desde la primera partida registrada
+  const trajectory = useMemo(() => {
     let totalRounds = 0;
     let totalKicks = 0;
     let totalHoles = 0;
@@ -91,9 +126,16 @@ export default function HistoryScreen() {
     let sumToPar = 0;
     let completedRounds = 0;
     let aces = 0;
-    let birdiesOrBetter = 0;
+    let eaglesOrBetter = 0;
+    let birdies = 0;
     let pars = 0;
+    let bogeys = 0;
+    let doubleOrWorse = 0;
+    let penalties = 0;
     let wins = 0;
+    let firstRoundAt: number | null = null;
+
+    const holeAgg: Record<number, { played: number; sumToPar: number; sumStrokes: number }> = {};
 
     for (const r of finished) {
       const myPlayer = me
@@ -103,28 +145,64 @@ export default function HistoryScreen() {
       const t = playerTotals(r, myPlayer.id);
       if (t.holesPlayed === 0) continue;
 
+      if (firstRoundAt === null || r.startedAt < firstRoundAt) {
+        firstRoundAt = r.startedAt;
+      }
+
       totalRounds += 1;
       totalKicks += t.strokes;
       totalHoles += t.holesPlayed;
 
       const st = playerStats(r, myPlayer.id);
       aces += st.counts['hole-in-one'];
-      birdiesOrBetter += st.counts['hole-in-one'] + st.counts.albatross + st.counts.eagle + st.counts.birdie;
+      eaglesOrBetter += st.counts['hole-in-one'] + st.counts.albatross + st.counts.eagle;
+      birdies += st.counts.birdie;
       pars += st.counts.par;
+      bogeys += st.counts.bogey;
+      doubleOrWorse += st.counts['double-bogey'] + st.counts.worse;
+      penalties += st.penalties;
+
+      for (const h of r.holes) {
+        const sc = r.scores[myPlayer.id]?.[h.number];
+        if (!isScored(sc)) continue;
+        const tot = holeTotal(sc);
+        const cur = holeAgg[h.number] ?? { played: 0, sumToPar: 0, sumStrokes: 0 };
+        cur.played += 1;
+        cur.sumToPar += tot - h.par;
+        cur.sumStrokes += tot;
+        holeAgg[h.number] = cur;
+      }
 
       if (r.players.length > 1) {
         const lb = leaderboard(r);
         if (lb[0]?.player.id === myPlayer.id) wins += 1;
       }
 
-      if (t.holesPlayed === r.holes.length) {
+      const fullComplete = t.holesPlayed === r.holes.length;
+      const frontComplete =
+        r.holes.length > 9 &&
+        r.holes.filter((h) => h.number <= 9).every((h) => isScored(r.scores[myPlayer.id]?.[h.number]));
+
+      if (fullComplete || frontComplete) {
+        const effStrokes = fullComplete ? t.strokes : t.frontStrokes;
+        const effToPar = fullComplete ? t.toPar : t.frontStrokes - t.frontPar;
         completedRounds += 1;
-        sumToPar += t.toPar;
-        if (bestToPar === null || t.toPar < bestToPar) {
-          bestToPar = t.toPar;
-          bestStrokes = t.strokes;
+        sumToPar += effToPar;
+        if (bestToPar === null || effToPar < bestToPar) {
+          bestToPar = effToPar;
+          bestStrokes = effStrokes;
         }
       }
+    }
+
+    let bestHole: { hole: number; avgToPar: number } | null = null;
+    let hardestHole: { hole: number; avgToPar: number } | null = null;
+    for (const [numStr, data] of Object.entries(holeAgg)) {
+      if (data.played === 0) continue;
+      const avg = data.sumToPar / data.played;
+      const hole = Number(numStr);
+      if (!bestHole || avg < bestHole.avgToPar) bestHole = { hole, avgToPar: avg };
+      if (!hardestHole || avg > hardestHole.avgToPar) hardestHole = { hole, avgToPar: avg };
     }
 
     return {
@@ -135,9 +213,16 @@ export default function HistoryScreen() {
       bestStrokes,
       avgToPar: completedRounds > 0 ? sumToPar / completedRounds : null,
       aces,
-      birdiesOrBetter,
+      eaglesOrBetter,
+      birdies,
       pars,
+      bogeys,
+      doubleOrWorse,
+      penalties,
       wins,
+      firstRoundAt,
+      bestHole,
+      hardestHole,
     };
   }, [finished, me]);
 
@@ -155,9 +240,9 @@ export default function HistoryScreen() {
     return (
       <Screen>
         <Card>
-          <Text style={type.h2}>Iniciá sesión para ver tus partidas</Text>
+          <Text style={type.h2}>Iniciá sesión para ver tu trayectoria</Text>
           <Text style={type.body}>
-            El historial y el contador personal están asociados a tu cuenta de jugador.
+            Tu trayectoria, estadísticas de juego e historial de partidas están asociados a tu cuenta de jugador.
           </Text>
           <Button label="Iniciar sesión" icon="log-in-outline" onPress={() => router.replace('/ingresar')} />
           <Button
@@ -174,58 +259,118 @@ export default function HistoryScreen() {
   return (
     <Screen>
       <View style={styles.header}>
-        <Text style={type.label}>Contador de {me.displayName}</Text>
-        <Text style={type.title}>Historial de partidas</Text>
+        <Text style={type.label}>Jugador · {me.displayName}</Text>
+        <Text style={type.title}>Mi trayectoria</Text>
         <Text style={type.small}>
-          Llevá el registro de tus partidas diarias, patadas totales, promedios e historial de tarjetas.
+          {trajectory.firstRoundAt
+            ? `Registrando partidas desde el ${formatDate(trajectory.firstRoundAt)}`
+            : 'Tus números acumulados, cómo jugás cada hoyo y todas tus tarjetas.'}
         </Text>
       </View>
 
-      {/* Contador general */}
+      {/* Resumen general de trayectoria */}
       <Card style={styles.counterCard}>
-        <View style={styles.counterHeader}>
-          <Ionicons name="stats-chart" size={20} color={colors.goldDark} />
-          <Text style={type.h2}>Mi contador acumulado</Text>
+        <View style={styles.counterHeaderRow}>
+          <View style={styles.counterHeader}>
+            <Ionicons name="stats-chart" size={20} color={colors.goldDark} />
+            <Text style={type.h2}>Resumen acumulado</Text>
+          </View>
+          {rankingPos?.position ? (
+            <View style={styles.rankChip}>
+              <Ionicons name="trophy" size={13} color={colors.forestDeep} />
+              <Text style={styles.rankChipText}>
+                Puesto #{rankingPos.position} de {rankingPos.total}
+              </Text>
+            </View>
+          ) : null}
         </View>
+
         <View style={styles.grid}>
-          <CounterBox label="Partidas" value={String(personalSummary.totalRounds)} sub={`${personalSummary.totalHoles} hoyos`} />
-          <CounterBox label="Patadas totales" value={String(personalSummary.totalKicks)} sub="acumuladas" />
+          <CounterBox label="Partidas" value={String(trajectory.totalRounds)} sub={`${trajectory.totalHoles} hoyos`} />
+          <CounterBox label="Patadas totales" value={String(trajectory.totalKicks)} sub="acumuladas" />
           <CounterBox
             label="Mejor tarjeta"
-            value={personalSummary.bestStrokes !== null ? String(personalSummary.bestStrokes) : '–'}
-            sub={personalSummary.bestToPar !== null ? formatToPar(personalSummary.bestToPar) : undefined}
+            value={trajectory.bestStrokes !== null ? String(trajectory.bestStrokes) : '–'}
+            sub={trajectory.bestToPar !== null ? formatToPar(trajectory.bestToPar) : undefined}
           />
           <CounterBox
             label="Promedio"
             value={
-              personalSummary.avgToPar !== null
-                ? `${personalSummary.avgToPar > 0 ? '+' : ''}${personalSummary.avgToPar.toFixed(1)}`
+              trajectory.avgToPar !== null
+                ? `${trajectory.avgToPar > 0 ? '+' : ''}${trajectory.avgToPar.toFixed(1)}`
                 : '–'
             }
             sub="al par"
           />
         </View>
+
         <View style={styles.badgesRow}>
           <View style={styles.pillStat}>
-            <Text style={styles.pillNum}>{personalSummary.birdiesOrBetter}</Text>
-            <Text style={styles.pillText}>Bajo par (Birdies+)</Text>
-          </View>
-          <View style={styles.pillStat}>
-            <Text style={styles.pillNum}>{personalSummary.pars}</Text>
-            <Text style={styles.pillText}>Pares</Text>
-          </View>
-          <View style={styles.pillStat}>
-            <Text style={styles.pillNum}>{personalSummary.aces}</Text>
+            <Text style={styles.pillNum}>{trajectory.aces}</Text>
             <Text style={styles.pillText}>Hoyos en 1</Text>
           </View>
-          {personalSummary.wins > 0 ? (
+          <View style={styles.pillStat}>
+            <Text style={styles.pillNum}>{trajectory.wins}</Text>
+            <Text style={styles.pillText}>Partidas ganadas</Text>
+          </View>
+          {trajectory.penalties > 0 ? (
             <View style={styles.pillStat}>
-              <Text style={styles.pillNum}>{personalSummary.wins}</Text>
-              <Text style={styles.pillText}>Ganadas</Text>
+              <Text style={styles.pillNum}>{trajectory.penalties}</Text>
+              <Text style={styles.pillText}>Penalidades</Text>
             </View>
           ) : null}
         </View>
       </Card>
+
+      {/* Estadísticas de cómo jugó (distribución de golpes y hoyos destacados) */}
+      {trajectory.totalHoles > 0 ? (
+        <Card>
+          <View style={styles.counterHeader}>
+            <Ionicons name="analytics-outline" size={20} color={colors.forest} />
+            <Text style={type.h2}>Cómo jugaste ({trajectory.totalHoles} hoyos)</Text>
+          </View>
+          <View style={styles.distList}>
+            {trajectory.eaglesOrBetter > 0 ? (
+              <DistBar
+                label="Águila / Hoyo en 1"
+                count={trajectory.eaglesOrBetter}
+                total={trajectory.totalHoles}
+                barColor={colors.gold}
+              />
+            ) : null}
+            <DistBar label="Birdie (-1)" count={trajectory.birdies} total={trajectory.totalHoles} barColor={colors.good} />
+            <DistBar label="Par (E)" count={trajectory.pars} total={trajectory.totalHoles} barColor={colors.moss} />
+            <DistBar label="Bogey (+1)" count={trajectory.bogeys} total={trajectory.totalHoles} barColor={colors.goldDark} />
+            <DistBar
+              label="Doble bogey o más"
+              count={trajectory.doubleOrWorse}
+              total={trajectory.totalHoles}
+              barColor={colors.bad}
+            />
+          </View>
+
+          {trajectory.bestHole && trajectory.hardestHole && trajectory.bestHole.hole !== trajectory.hardestHole.hole ? (
+            <View style={styles.holeHighlightsRow}>
+              <View style={styles.holeHighlightBox}>
+                <Text style={styles.holeHighlightKicker}>TU MEJOR HOYO</Text>
+                <Text style={styles.holeHighlightNum}>Hoyo {trajectory.bestHole.hole}</Text>
+                <Text style={[styles.holeHighlightSub, { color: colors.good }]}>
+                  Prom. {trajectory.bestHole.avgToPar > 0 ? '+' : ''}
+                  {trajectory.bestHole.avgToPar.toFixed(1)} al par
+                </Text>
+              </View>
+              <View style={styles.holeHighlightBox}>
+                <Text style={styles.holeHighlightKicker}>EL MÁS EXIGENTE</Text>
+                <Text style={styles.holeHighlightNum}>Hoyo {trajectory.hardestHole.hole}</Text>
+                <Text style={[styles.holeHighlightSub, { color: colors.bad }]}>
+                  Prom. {trajectory.hardestHole.avgToPar > 0 ? '+' : ''}
+                  {trajectory.hardestHole.avgToPar.toFixed(1)} al par
+                </Text>
+              </View>
+            </View>
+          ) : null}
+        </Card>
+      ) : null}
 
       <Segmented
         options={[
@@ -311,10 +456,104 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     backgroundColor: colors.cream,
   },
+  counterHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
   counterHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  rankChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: radius.pill,
+    backgroundColor: colors.goldLight,
+    borderWidth: 1,
+    borderColor: colors.gold,
+  },
+  rankChipText: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: colors.forestDeep,
+  },
+  distList: {
+    gap: 8,
+  },
+  distRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  distLabel: {
+    width: 118,
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: colors.ink,
+  },
+  distTrack: {
+    flex: 1,
+    height: 9,
+    borderRadius: radius.pill,
+    backgroundColor: colors.cream,
+    overflow: 'hidden',
+  },
+  distFill: {
+    height: '100%',
+    borderRadius: radius.pill,
+  },
+  distValue: {
+    width: 68,
+    textAlign: 'right',
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: colors.ink,
+    fontVariant: ['tabular-nums'],
+  },
+  distPct: {
+    fontWeight: '600',
+    color: colors.muted,
+    fontSize: 11.5,
+  },
+  holeHighlightsRow: {
+    flexDirection: 'row',
+    gap: space.sm,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: colors.line,
+  },
+  holeHighlightBox: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: radius.sm,
+    backgroundColor: colors.creamLight,
+    borderWidth: 1,
+    borderColor: colors.line,
+    gap: 2,
+  },
+  holeHighlightKicker: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    letterSpacing: 1,
+    color: colors.goldDark,
+  },
+  holeHighlightNum: {
+    fontFamily: fonts.serif,
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.ink,
+  },
+  holeHighlightSub: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   grid: {
     flexDirection: 'row',

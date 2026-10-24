@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { IconName } from '@/components/icons';
 import type { LatLng } from '@/domain/config';
-import { colors, fonts, radius, shadow } from '@/theme';
+import { colors, fonts, radius, shadow, space } from '@/theme';
 
 interface WeatherData {
   tempC: number;
@@ -39,6 +40,7 @@ function weatherDescription(code: number): { label: string; icon: IconName; rain
  * Al tocarlo, despliega dentro de la misma tarjeta el detalle de "Clima en cancha".
  */
 export function WeatherCompass({ coords }: { coords?: LatLng | null }) {
+  const insets = useSafeAreaInsets();
   const lat = coords?.lat ?? -38.8857;
   const lng = coords?.lng ?? -62.0292;
   const [weather, setWeather] = useState<WeatherData | null>(null);
@@ -114,93 +116,104 @@ export function WeatherCompass({ coords }: { coords?: LatLng | null }) {
         style={({ pressed }) => [
           styles.cardContainer,
           rainAlert && styles.cardRain,
-          pressed && { opacity: 0.94 },
+          pressed && { opacity: 0.86 },
         ]}>
-        <View style={styles.mainRow}>
-          {/* Rosa de los vientos más amplia y legible */}
-          <View style={styles.compass}>
-            <View style={styles.compassInnerRing} />
-            <View style={styles.compassCrossH} />
-            <View style={styles.compassCrossV} />
-            <Text style={[styles.cardinal, styles.cardN]}>N</Text>
-            <Text style={[styles.cardinal, styles.cardE]}>E</Text>
-            <Text style={[styles.cardinal, styles.cardS]}>S</Text>
-            <Text style={[styles.cardinal, styles.cardO]}>O</Text>
-            <View style={[styles.arrowWrap, { transform: [{ rotate: `${blowToDeg}deg` }] }]}>
-              <Ionicons name="navigate" size={22} color={colors.goldLight} style={{ transform: [{ rotate: '-45deg' }] }} />
-            </View>
-          </View>
-
-          {/* Cuerpo central suelto y distribuido */}
-          <View style={styles.centerInfo}>
-            <View style={styles.headerTagRow}>
-              <Text style={styles.kickerText}>CLIMA EN CANCHA</Text>
-              <Ionicons
-                name={expanded ? 'chevron-up' : 'chevron-down'}
-                size={15}
-                color={colors.goldLight}
-              />
-            </View>
-
-            <View style={styles.metricsWrap}>
-              <View style={styles.tempChip}>
-                <Ionicons name={info.icon} size={18} color={colors.goldLight} />
-                <Text style={styles.tempText}>{data.tempC}°C</Text>
-                <Text style={styles.skyText}>{info.label}</Text>
-              </View>
-
-              <View style={styles.windAndRainRow}>
-                <View style={styles.windPill}>
-                  <Ionicons name="flag-outline" size={14} color={colors.goldLight} />
-                  <Text style={styles.windLabel}>
-                    Viento <Text style={styles.windStrong}>{dir}</Text> · {data.windKmh} km/h
-                  </Text>
-                </View>
-
-                <View style={[styles.statusBadge, rainAlert ? styles.statusRain : styles.statusDry]}>
-                  <Ionicons
-                    name={rainAlert ? 'umbrella' : 'checkmark-circle'}
-                    size={13}
-                    color={rainAlert ? '#FFFFFF' : colors.forestDeep}
-                  />
-                  <Text style={[styles.statusText, rainAlert ? styles.statusTextRain : styles.statusTextDry]}>
-                    {data.isRainingNow || info.rain
-                      ? 'Lluvia'
-                      : rainAlert
-                        ? `Lluvia ${data.rainProbNextHours}%`
-                        : `Seco ${data.rainProbNextHours}%`}
-                  </Text>
-                </View>
-              </View>
-            </View>
+        {/* Rosa de los vientos completa con N, E, S, O y anillo interno */}
+        <View style={styles.compass}>
+          <View style={styles.compassInnerRing} />
+          <View style={styles.compassCrossH} />
+          <View style={styles.compassCrossV} />
+          <Text style={[styles.cardinal, styles.cardN]}>N</Text>
+          <Text style={[styles.cardinal, styles.cardE]}>E</Text>
+          <Text style={[styles.cardinal, styles.cardS]}>S</Text>
+          <Text style={[styles.cardinal, styles.cardO]}>O</Text>
+          <View style={[styles.arrowWrap, { transform: [{ rotate: `${blowToDeg}deg` }] }]}>
+            <Ionicons name="navigate" size={15} color={colors.moss} style={{ transform: [{ rotate: '-45deg' }] }} />
           </View>
         </View>
 
-        {/* Panel desplegable integrado dentro de la misma tarjeta para que encaje perfecto */}
-        {expanded ? (
-          <View style={styles.expandedSection}>
-            <View style={styles.expandedHeader}>
-              <Ionicons name="partly-sunny-outline" size={17} color={colors.goldLight} />
-              <Text style={styles.expandedTitle}>Clima en cancha</Text>
-            </View>
-            <Text style={styles.expandedLine}>
-              <Text style={styles.expandedBold}>Viento en los hoyos:</Text> sopla desde el {dir} ({data.windDeg}°) a{' '}
-              {data.windKmh} km/h. La aguja de la rosa indica hacia dónde empuja la pelota.
-            </Text>
-            <Text style={styles.expandedLine}>
-              <Text style={styles.expandedBold}>Condición actual:</Text> {data.tempC}°C con cielo {info.label.toLowerCase()}.
-            </Text>
-            <Text style={styles.expandedLine}>
-              <Text style={styles.expandedBold}>Pronóstico próx. 4 hs:</Text>{' '}
-              {data.isRainingNow || info.rain
-                ? 'Precipitaciones activas sobre la cancha.'
-                : data.rainProbNextHours >= 40
-                  ? `Probabilidad de lluvia del ${data.rainProbNextHours}%.`
-                  : `Cancha sin lluvias previstas (${data.rainProbNextHours}% prob.).`}
+        {/* Cuerpo compacto con título CLIMA EN CANCHA y métricas */}
+        <View style={styles.centerInfo}>
+          <View style={styles.headerTagRow}>
+            <Text style={styles.kickerText}>CLIMA EN CANCHA</Text>
+            <Ionicons
+              name={expanded ? 'chevron-up' : 'chevron-down'}
+              size={13}
+              color={colors.goldDark}
+            />
+          </View>
+
+          <View style={styles.topLine}>
+            <Ionicons name={info.icon} size={14} color={colors.goldDark} />
+            <Text style={styles.tempText}>{data.tempC}°C</Text>
+            <Text style={styles.skyText} numberOfLines={1}>
+              {info.label}
             </Text>
           </View>
-        ) : null}
+
+          <View style={styles.bottomLine}>
+            <View style={styles.windPill}>
+              <Ionicons name="flag-outline" size={12} color={colors.muted} />
+              <Text style={styles.windLabel} numberOfLines={1}>
+                Viento <Text style={styles.windStrong}>{dir}</Text> · {data.windKmh} km/h
+              </Text>
+            </View>
+            <View style={[styles.statusBadge, rainAlert ? styles.statusRain : styles.statusDry]}>
+              <Ionicons
+                name={rainAlert ? 'umbrella-outline' : 'sunny-outline'}
+                size={11}
+                color={rainAlert ? '#2B6CB0' : colors.moss}
+              />
+              <Text style={[styles.statusText, rainAlert ? styles.statusTextRain : styles.statusTextDry]}>
+                {data.isRainingNow || info.rain
+                  ? 'Lluvia'
+                  : rainAlert
+                    ? `Lluvia ${data.rainProbNextHours}%`
+                    : 'Seco'}
+              </Text>
+            </View>
+          </View>
+        </View>
       </Pressable>
+
+      {/* Modal transparente: tocar en CUALQUIER lugar de la pantalla cierra el detalle */}
+      <Modal
+        transparent
+        visible={expanded}
+        animationType="fade"
+        onRequestClose={() => setExpanded(false)}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Cerrar detalle del clima"
+          onPress={() => setExpanded(false)}
+          style={styles.backdrop}>
+          <View style={[styles.modalSlot, { paddingTop: insets.top + 132 }]}>
+            <View style={styles.expandedOverlay}>
+              <View style={styles.expandedHeader}>
+                <View style={styles.expandedTitleRow}>
+                  <Ionicons name="partly-sunny-outline" size={16} color={colors.goldDark} />
+                  <Text style={styles.expandedTitle}>Clima en cancha</Text>
+                </View>
+                <Ionicons name="close" size={16} color={colors.muted} />
+              </View>
+              <Text style={styles.expandedLine}>
+                <Text style={styles.expandedBold}>Viento:</Text> desde el {dir} ({data.windDeg}°) a {data.windKmh} km/h. La aguja indica hacia dónde empuja la pelota.
+              </Text>
+              <Text style={styles.expandedLine}>
+                <Text style={styles.expandedBold}>Cielo:</Text> {data.tempC}°C · {info.label.toLowerCase()}.
+              </Text>
+              <Text style={styles.expandedLine}>
+                <Text style={styles.expandedBold}>Próx. 4 hs:</Text>{' '}
+                {data.isRainingNow || info.rain
+                  ? 'Precipitaciones activas.'
+                  : data.rainProbNextHours >= 40
+                    ? `Probabilidad de lluvia ${data.rainProbNextHours}%.`
+                    : `Cancha seca (${data.rainProbNextHours}% prob. lluvia).`}
+              </Text>
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -208,182 +221,196 @@ export function WeatherCompass({ coords }: { coords?: LatLng | null }) {
 const styles = StyleSheet.create({
   wrapper: {
     flex: 1,
-    zIndex: 25,
+    position: 'relative',
+    zIndex: 60,
   },
   cardContainer: {
-    borderRadius: radius.lg,
-    backgroundColor: colors.forestDeep,
-    borderWidth: 1.5,
-    borderColor: colors.gold,
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-    gap: 10,
-    ...shadow,
-  },
-  cardRain: {
-    borderColor: '#63B3ED',
-  },
-  mainRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    gap: 12,
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(242, 235, 219, 0.74)',
+    borderWidth: 1,
+    borderColor: 'rgba(160, 136, 88, 0.32)',
+    paddingVertical: 9,
+    paddingHorizontal: 13,
+  },
+  cardRain: {
+    borderColor: 'rgba(43, 108, 176, 0.45)',
   },
   compass: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    borderWidth: 1.5,
-    borderColor: colors.gold,
-    backgroundColor: colors.forest,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(160, 136, 88, 0.38)',
+    backgroundColor: 'rgba(255, 253, 248, 0.8)',
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
   },
   compassInnerRing: {
     position: 'absolute',
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(217, 199, 154, 0.22)',
+    borderColor: 'rgba(160, 136, 88, 0.18)',
   },
   compassCrossH: {
     position: 'absolute',
-    width: 38,
+    width: 32,
     height: 1,
-    backgroundColor: 'rgba(217, 199, 154, 0.28)',
+    backgroundColor: 'rgba(160, 136, 88, 0.22)',
   },
   compassCrossV: {
     position: 'absolute',
     width: 1,
-    height: 38,
-    backgroundColor: 'rgba(217, 199, 154, 0.28)',
+    height: 32,
+    backgroundColor: 'rgba(160, 136, 88, 0.22)',
   },
   cardinal: {
     position: 'absolute',
-    fontSize: 9.5,
-    fontWeight: '800',
-    color: colors.cream,
+    fontSize: 8,
+    fontWeight: '700',
+    color: colors.muted,
     fontFamily: fonts.serif,
   },
-  cardN: { top: 2, color: colors.goldLight },
+  cardN: { top: 2, color: colors.goldDark, fontWeight: '800' },
   cardS: { bottom: 2 },
-  cardE: { right: 4 },
-  cardO: { left: 4 },
+  cardE: { right: 3 },
+  cardO: { left: 3 },
   arrowWrap: {
-    width: 28,
-    height: 28,
+    width: 22,
+    height: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
   centerInfo: {
     flex: 1,
-    gap: 5,
+    gap: 2.5,
   },
   headerTagRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 6,
   },
   kickerText: {
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: '800',
-    letterSpacing: 1.3,
-    color: colors.goldLight,
+    letterSpacing: 1.1,
+    color: colors.goldDark,
   },
-  metricsWrap: {
-    gap: 5,
-  },
-  tempChip: {
+  topLine: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    flexWrap: 'wrap',
+    gap: 5,
   },
   tempText: {
-    color: colors.cream,
-    fontSize: 17,
-    fontWeight: '800',
+    color: colors.ink,
+    fontSize: 15.5,
+    fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },
   skyText: {
-    color: colors.cream,
-    opacity: 0.92,
-    fontSize: 13,
-    fontWeight: '600',
+    color: colors.muted,
+    fontSize: 12.5,
+    fontWeight: '500',
+    flexShrink: 1,
   },
-  windAndRainRow: {
+  bottomLine: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: 8,
+    gap: 6,
   },
   windPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 4,
   },
   windLabel: {
-    color: colors.goldLight,
-    fontSize: 13,
-    fontWeight: '600',
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '500',
     fontVariant: ['tabular-nums'],
   },
   windStrong: {
-    fontWeight: '800',
-    color: colors.cream,
+    fontWeight: '700',
+    color: colors.ink,
   },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
     borderRadius: radius.pill,
   },
   statusRain: {
-    backgroundColor: '#2B6CB0',
+    backgroundColor: 'rgba(43, 108, 176, 0.14)',
   },
   statusDry: {
-    backgroundColor: colors.goldLight,
+    backgroundColor: 'rgba(85, 112, 58, 0.14)',
   },
   statusText: {
-    fontSize: 11,
-    fontWeight: '800',
+    fontSize: 10.5,
+    fontWeight: '700',
   },
   statusTextRain: {
-    color: '#FFFFFF',
+    color: '#2B6CB0',
   },
   statusTextDry: {
-    color: colors.forestDeep,
+    color: colors.moss,
   },
-  expandedSection: {
-    marginTop: 2,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(217, 199, 154, 0.3)',
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+  },
+  modalSlot: {
+    width: '100%',
+    maxWidth: 480,
+    paddingHorizontal: space.md,
+    alignItems: 'flex-end',
+  },
+  expandedOverlay: {
+    width: '88%',
+    maxWidth: 320,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(255, 253, 248, 0.98)',
+    borderWidth: 1,
+    borderColor: colors.gold,
     gap: 5,
+    ...shadow,
   },
   expandedHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    justifyContent: 'space-between',
     marginBottom: 2,
   },
+  expandedTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   expandedTitle: {
-    color: colors.goldLight,
+    color: colors.ink,
     fontFamily: fonts.serif,
     fontWeight: '700',
-    fontSize: 15,
+    fontSize: 14,
   },
   expandedLine: {
-    color: colors.cream,
-    fontSize: 12.5,
-    lineHeight: 18,
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
   },
   expandedBold: {
     fontWeight: '700',
-    color: colors.goldLight,
+    color: colors.ink,
   },
 });

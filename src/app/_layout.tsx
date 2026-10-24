@@ -50,7 +50,7 @@ export default function RootLayout() {
           <Stack.Screen name="ronda/[id]/index" options={{ title: 'Ronda' }} />
           <Stack.Screen name="ronda/[id]/resumen" options={{ title: 'Resumen' }} />
           <Stack.Screen name="ranking" options={{ title: 'Ranking' }} />
-          <Stack.Screen name="historial" options={{ title: 'Mis partidas' }} />
+          <Stack.Screen name="historial" options={{ title: 'Mi trayectoria' }} />
           <Stack.Screen name="como-llegar" options={{ title: 'Cómo llegar' }} />
           <Stack.Screen name="reglas" options={{ title: 'Cómo se juega' }} />
           <Stack.Screen name="admin/index" options={{ title: 'Administración' }} />

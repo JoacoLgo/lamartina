@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/Button';
@@ -8,11 +8,13 @@ import { Card } from '@/components/Card';
 import type { IconName } from '@/components/icons';
 import { MapRoute } from '@/components/MapRoute';
 import { Screen } from '@/components/Screen';
+import { DEFAULT_CONFIG } from '@/config/defaults';
 import { MAP_COLORS, type MapLayer } from '@/config/map';
 import { guidance, type GuidanceState } from '@/domain/geo';
 import { useUserLocation } from '@/lib/location';
 import { mapsDirectionsUrl, mapsSearchUrl, openUrl } from '@/lib/maps';
 import { useAppStore } from '@/store/useAppStore';
+import { refreshConfig } from '@/sync/engine';
 import { colors, fonts, radius, space, type } from '@/theme';
 
 const STATE_ICON: Record<GuidanceState, IconName> = {
@@ -46,11 +48,24 @@ function Dot({ color, label }: { color: string; label: string }) {
 /** Pantalla para quien viene por primera vez: mapa con el camino, GPS que lo va guiando y pasos para entrar. */
 export default function HowToGetThereScreen() {
   const router = useRouter();
-  const venue = useAppStore((s) => s.config.venue);
+  const rawVenue = useAppStore((s) => s.config.venue);
+  const venue = useMemo(
+    () => ({
+      ...rawVenue,
+      gate: rawVenue.gate ?? DEFAULT_CONFIG.venue.gate,
+      route: rawVenue.route.length >= 2 ? rawVenue.route : DEFAULT_CONFIG.venue.route,
+      predio: rawVenue.predio.length >= 3 ? rawVenue.predio : DEFAULT_CONFIG.venue.predio,
+    }),
+    [rawVenue],
+  );
   const isAdmin = useAppStore((s) => s.me?.role === 'admin');
   const [layer, setLayer] = useState<MapLayer>('satellite');
   const [fit, setFit] = useState(0);
   const gps = useUserLocation();
+
+  useEffect(() => {
+    void refreshConfig().catch(() => undefined);
+  }, []);
 
   const query = venue.gate ? `${venue.gate.lat},${venue.gate.lng}` : venue.mapsQuery;
   const guide = useMemo(() => (gps.position ? guidance(gps.position, venue) : null), [gps.position, venue]);

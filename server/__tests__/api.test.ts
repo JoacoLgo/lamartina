@@ -186,6 +186,57 @@ describe('rondas individuales', () => {
     await api('POST', '/rounds/ronda-eli-1/scores', { cells: [{ playerId: 'e1', hole: 1, kicks: 3, penalties: 0 }] }, eli.token);
     assert.equal((await api('GET', `/rounds/ronda-eli-1?since=${r.rev}`, undefined, eli.token)).body.changed, true);
   });
+
+  it('completa una partida con Ida y Vuelta (18 hoyos) sin perder ningún hoyo y suma al ranking', async () => {
+    const fede = await register('fede_18', 'Fede Dieciocho', 'Fede18');
+    const created = await api(
+      'POST',
+      '/rounds',
+      { id: 'ronda-fede-18', mode: 'individual', format: 'stroke', players: [{ id: 'f1', name: 'Fede18', profileId: fede.id }] },
+      fede.token,
+    );
+    assert.equal(created.status, 200);
+    const r9 = created.body.round;
+    assert.equal(r9.holes.length, 9);
+
+    // Carga los primeros 9 hoyos (Ida)
+    const frontCells = r9.holes.map((h: any) => ({ playerId: 'f1', hole: h.number, kicks: h.par, penalties: 0 }));
+    assert.equal((await api('POST', '/rounds/ronda-fede-18/scores', { cells: frontCells }, fede.token)).status, 200);
+
+    // Incluso si el primer puntaje de la Vuelta (hoyo 10) llega antes o junto con /back-nine, el servidor extiende a 18 hoyos y no lo descarta
+    const h10Res = await api(
+      'POST',
+      '/rounds/ronda-fede-18/scores',
+      { cells: [{ playerId: 'f1', hole: 10, kicks: 3, penalties: 0 }] },
+      fede.token,
+    );
+    assert.equal(h10Res.status, 200);
+    assert.equal(h10Res.body.round.holes.length, 18);
+    assert.equal(h10Res.body.round.scores.f1[10].kicks, 3);
+
+    // Llamar a /back-nine es idempotente y conserva los 18 hoyos y puntajes
+    const backRes = await api('POST', '/rounds/ronda-fede-18/back-nine', {}, fede.token);
+    assert.equal(backRes.status, 200);
+    assert.equal(backRes.body.round.holes.length, 18);
+
+    // Carga el resto de la Vuelta (11..18)
+    const backCells = backRes.body.round.holes
+      .filter((h: any) => h.number >= 11)
+      .map((h: any) => ({ playerId: 'f1', hole: h.number, kicks: h.par, penalties: 0 }));
+    const afterBack = await api('POST', '/rounds/ronda-fede-18/scores', { cells: backCells }, fede.token);
+    assert.equal(afterBack.status, 200);
+
+    // Verifica que los 18 hoyos estén completos en el servidor
+    for (let h = 1; h <= 18; h++) {
+      assert.ok(afterBack.body.round.scores.f1[h]?.kicks > 0, `Falta hoyo ${h}`);
+    }
+
+    assert.equal((await api('POST', '/rounds/ronda-fede-18/finish', {}, fede.token)).status, 200);
+    const ranking = await api('GET', '/ranking?kind=best&period=all');
+    const entry = ranking.body.entries.find((e: any) => e.userId === fede.id);
+    assert.ok(entry);
+    assert.equal(entry.bestToPar, 0);
+  });
 });
 
 describe('jugadores registrados en una misma ronda', () => {
@@ -219,6 +270,11 @@ describe('jugadores registrados en una misma ronda', () => {
     assert.equal((await api('POST', '/auth/verify', { userId: jorge.id, password: 'mala' }, ines.token)).status, 401);
     const ok = await api('POST', '/auth/verify', { userId: jorge.id, password: 'secreto1' }, ines.token);
     assert.equal(ok.status, 200);
+    // también permite verificar por nombre de usuario y contraseña (login rápido en Nueva Ronda)
+    const byUser = await api('POST', '/auth/verify', { username: 'jorge_r', password: 'secreto1' });
+    assert.equal(byUser.status, 200);
+    assert.equal(byUser.body.user.displayName, 'Jorge');
+    assert.ok(byUser.body.token);
     const created = await api('POST', '/rounds', {
       id: 'ronda-ines-jorge',
       players: [{ id: 'i1', name: 'x', profileId: ines.id }, { id: 'j1', name: 'x', profileId: jorge.id, joinToken: ok.body.joinToken }],

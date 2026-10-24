@@ -1,7 +1,7 @@
 import { MIN_ROUNDS_FOR_AVERAGE } from './constants';
 import { cardPointsFromToPar } from './duo';
 import { playerStats } from './stats';
-import { playerTotals } from './scoring';
+import { isScored, playerTotals } from './scoring';
 import type { Profile, Round } from './types';
 
 /**
@@ -86,14 +86,23 @@ export function buildRanking(
       a.aces += playerStats(round, player.id).counts['hole-in-one'];
 
       const totals = playerTotals(round, player.id);
-      if (totals.holesPlayed < round.holes.length) continue; // ronda incompleta: no cuenta
+      const fullComplete = totals.holesPlayed === round.holes.length;
+      const frontComplete =
+        round.holes.length > 9 &&
+        round.holes.filter((h) => h.number <= 9).every((h) => isScored(round.scores[player.id]?.[h.number]));
+
+      if (!fullComplete && !frontComplete) continue; // ni la ronda entera ni la Ida (9 hoyos) están completas
+
+      const effectiveStrokes = fullComplete ? totals.strokes : totals.frontStrokes;
+      const effectiveToPar = fullComplete ? totals.toPar : totals.frontStrokes - totals.frontPar;
+
       a.rounds += 1;
-      a.sumToPar += totals.toPar;
-      if (totals.toPar < a.bestToPar) {
-        a.bestToPar = totals.toPar;
-        a.bestStrokes = totals.strokes;
+      a.sumToPar += effectiveToPar;
+      if (effectiveToPar < a.bestToPar) {
+        a.bestToPar = effectiveToPar;
+        a.bestStrokes = effectiveStrokes;
       }
-      validInRound.push({ profileId: profile.id, toPar: totals.toPar });
+      validInRound.push({ profileId: profile.id, toPar: effectiveToPar });
     }
 
     if (validInRound.length > 0) {

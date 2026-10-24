@@ -51,7 +51,7 @@
     "lint": "expo lint",
     "test": "tsx --test src/domain/__tests__/*.test.ts server/__tests__/*.test.ts",
     "typecheck": "tsc --noEmit && tsc -p server/tsconfig.json",
-    "server": "tsx server/index.ts",
+    "server": "tsx watch server/index.ts",
     "server:dev": "tsx watch server/index.ts",
     "demo:cargar": "tsx server/demo.ts cargar",
     "demo:quitar": "tsx server/demo.ts quitar",

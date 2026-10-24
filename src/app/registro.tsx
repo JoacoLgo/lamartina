@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -10,9 +11,9 @@ import { Screen } from '@/components/Screen';
 import { errorMessage } from '@/lib/api';
 import { pickAvatar } from '@/lib/pickAvatar';
 import { register } from '@/sync/engine';
-import { colors, space, type } from '@/theme';
+import { colors, fonts, radius, space } from '@/theme';
 
-/** Crear perfil: nombre, apodo (opcional), usuario, contraseña y foto (opcional). */
+/** Crear perfil: diseño compacto para celular con foto e introducción integradas arriba y campos en grilla. */
 export default function RegisterScreen() {
   const router = useRouter();
   const [name, setName] = useState('');
@@ -26,10 +27,10 @@ export default function RegisterScreen() {
 
   const validate = (): Record<string, string> => {
     const e: Record<string, string> = {};
-    if (name.trim().length < 2) e.name = 'Escribí tu nombre y apellido.';
-    if (!/^[a-zA-Z0-9_.]{3,20}$/.test(username.trim())) e.username = 'De 3 a 20 caracteres: letras, números, punto o guión bajo.';
-    if (password.length < 6) e.password = 'Mínimo 6 caracteres.';
-    if (repeat !== password) e.repeat = 'Las contraseñas no coinciden.';
+    if (name.trim().length < 2) e.name = 'Ingresá tu nombre.';
+    if (!/^[a-zA-Z0-9_.]{3,20}$/.test(username.trim())) e.username = '3 a 20 letras, números, punto o guión.';
+    if (password.length < 6) e.password = 'Mín. 6 caracteres.';
+    if (repeat !== password) e.repeat = 'No coinciden.';
     return e;
   };
 
@@ -57,46 +58,195 @@ export default function RegisterScreen() {
   };
 
   return (
-    <Screen footer={<Button label={busy ? 'Creando…' : 'Crear mi perfil'} icon="person-add-outline" onPress={submit} disabled={busy} />}>
-      <View style={styles.intro}>
-        <Text style={type.title}>Tu perfil</Text>
-        <Text style={type.body}>
-          Con tu perfil tus rondas suman al ranking y podés entrar desde cualquier celular. Tu contraseña es la que evita que otra
-          persona juegue o cambie cosas en tu nombre.
-        </Text>
-      </View>
-
-      <View style={styles.photoRow}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Elegir foto" onPress={choosePhoto}>
-          <Avatar name={nickname || name || '?'} id={username || 'nuevo'} uri={avatar} size={84} />
+    <Screen>
+      {/* Cabecera compacta: Foto a la izquierda + Título y descripción breve a la derecha */}
+      <View style={styles.topHeader}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Elegir foto de perfil"
+          onPress={choosePhoto}
+          style={styles.photoCol}>
+          <Avatar name={nickname || name || '?'} id={username || 'nuevo'} uri={avatar} size={64} />
+          <View style={styles.photoPill}>
+            <Ionicons name="camera-outline" size={13} color={colors.forest} />
+            <Text style={styles.photoPillText}>{avatar ? 'Cambiar' : 'Agregar foto'}</Text>
+          </View>
         </Pressable>
-        <View style={styles.flex}>
-          <Button label={avatar ? 'Cambiar foto' : 'Agregar foto'} variant="secondary" icon="camera-outline" onPress={choosePhoto} />
-          <Text style={type.small}>Opcional. Se ve chiquita en el ranking.</Text>
+
+        <View style={styles.introCol}>
+          <Text style={styles.titleText}>Tu perfil</Text>
+          <Text style={styles.introSub}>
+            Sumá tus rondas al ranking, seguí tu trayectoria y entrá desde cualquier celular con tu contraseña.
+          </Text>
           {errors.photo ? <Text style={styles.error}>{errors.photo}</Text> : null}
         </View>
       </View>
 
-      <Card>
-        <Field label="Nombre y apellido" value={name} onChangeText={setName} autoCapitalize="words" placeholder="Martín Gómez" error={errors.name} />
-        <Field label="Apodo (opcional)" value={nickname} onChangeText={setNickname} autoCapitalize="words" placeholder="Tincho" hint="Es el que se ve en el ranking. Si no ponés, se ve tu nombre." />
-        <Field label="Usuario" value={username} onChangeText={setUsername} placeholder="tincho10" autoComplete="username" error={errors.username} hint="Con este usuario entrás desde cualquier celular." />
-        <Field label="Contraseña" value={password} onChangeText={setPassword} secureTextEntry placeholder="mínimo 6 caracteres" autoComplete="new-password" error={errors.password} />
-        <Field label="Repetí la contraseña" value={repeat} onChangeText={setRepeat} secureTextEntry placeholder="la misma de arriba" autoComplete="new-password" error={errors.repeat} onSubmitEditing={submit} />
+      {/* Formulario compacto en grilla para celular */}
+      <Card style={styles.formCard}>
+        <View style={styles.twoCols}>
+          <View style={styles.colName}>
+            <Field
+              label="Nombre y apellido"
+              value={name}
+              onChangeText={setName}
+              autoCapitalize="words"
+              placeholder="Martín Gómez"
+              error={errors.name}
+              style={styles.compactInput}
+            />
+          </View>
+          <View style={styles.colNick}>
+            <Field
+              label="Apodo (opc.)"
+              value={nickname}
+              onChangeText={setNickname}
+              autoCapitalize="words"
+              placeholder="Tincho"
+              style={styles.compactInput}
+            />
+          </View>
+        </View>
+
+        <Field
+          label="Usuario (para iniciar sesión)"
+          value={username}
+          onChangeText={setUsername}
+          placeholder="tincho10"
+          autoComplete="username"
+          error={errors.username}
+          style={styles.compactInput}
+        />
+
+        <View style={styles.twoCols}>
+          <View style={styles.colHalf}>
+            <Field
+              label="Contraseña"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              placeholder="Mín. 6 caract."
+              autoComplete="new-password"
+              error={errors.password}
+              style={styles.compactInput}
+            />
+          </View>
+          <View style={styles.colHalf}>
+            <Field
+              label="Repetir clave"
+              value={repeat}
+              onChangeText={setRepeat}
+              secureTextEntry
+              placeholder="Igual a la anterior"
+              autoComplete="new-password"
+              error={errors.repeat}
+              onSubmitEditing={submit}
+              style={styles.compactInput}
+            />
+          </View>
+        </View>
+
         {errors.form ? <Text style={styles.error}>{errors.form}</Text> : null}
       </Card>
 
-      <Pressable accessibilityRole="link" onPress={() => router.replace('/ingresar')}>
-        <Text style={styles.link}>¿Ya tenés perfil? Iniciá sesión</Text>
-      </Pressable>
+      <View style={styles.actionsWrap}>
+        <Button
+          label={busy ? 'Creando…' : 'Crear mi perfil'}
+          icon="person-add-outline"
+          onPress={submit}
+          disabled={busy}
+          style={styles.submitBtn}
+        />
+        <Pressable accessibilityRole="link" onPress={() => router.replace('/ingresar')}>
+          <Text style={styles.link}>¿Ya tenés perfil? Iniciá sesión</Text>
+        </Pressable>
+      </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, gap: 6 },
-  intro: { gap: space.sm },
-  photoRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  error: { color: colors.bad, fontSize: 13, fontWeight: '600' },
-  link: { color: colors.goldDark, fontWeight: '700', fontSize: 15, textDecorationLine: 'underline', paddingVertical: 6 },
+  topHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    paddingHorizontal: 2,
+  },
+  photoCol: {
+    alignItems: 'center',
+    gap: 5,
+  },
+  photoPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 3,
+    paddingHorizontal: 9,
+    borderRadius: radius.pill,
+    backgroundColor: colors.cream,
+    borderWidth: 1,
+    borderColor: colors.gold,
+  },
+  photoPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.forest,
+  },
+  introCol: {
+    flex: 1,
+    gap: 3,
+  },
+  titleText: {
+    fontFamily: fonts.serif,
+    fontSize: 23,
+    fontWeight: '700',
+    color: colors.ink,
+  },
+  introSub: {
+    fontSize: 12.5,
+    lineHeight: 17,
+    color: colors.muted,
+  },
+  formCard: {
+    padding: 13,
+    gap: 10,
+  },
+  twoCols: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    width: '100%',
+  },
+  colName: {
+    flex: 1.25,
+    minWidth: 0,
+  },
+  colNick: {
+    flex: 0.85,
+    minWidth: 0,
+  },
+  colHalf: {
+    flex: 1,
+    minWidth: 0,
+  },
+  compactInput: {
+    height: 44,
+    minHeight: 44,
+    paddingVertical: 0,
+    paddingHorizontal: 11,
+    fontSize: 14.5,
+  },
+  actionsWrap: {
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+  },
+  submitBtn: {
+    alignSelf: 'center',
+    paddingHorizontal: 32,
+    minWidth: 215,
+    borderRadius: radius.pill,
+  },
+  error: { color: colors.bad, fontSize: 12.5, fontWeight: '600' },
+  link: { color: colors.goldDark, fontWeight: '700', fontSize: 14, textDecorationLine: 'underline', paddingVertical: 4 },
 });

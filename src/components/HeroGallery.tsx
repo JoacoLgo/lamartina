@@ -15,19 +15,19 @@ interface Props {
 
 const FADE_STEPS = [
   'rgba(10, 32, 20, 0.0)',
-  'rgba(10, 32, 20, 0.08)',
-  'rgba(10, 32, 20, 0.22)',
+  'rgba(10, 32, 20, 0.06)',
+  'rgba(10, 32, 20, 0.14)',
+  'rgba(10, 32, 20, 0.24)',
+  'rgba(10, 32, 20, 0.34)',
   'rgba(10, 32, 20, 0.42)',
-  'rgba(10, 32, 20, 0.65)',
-  'rgba(10, 32, 20, 0.85)',
-  '#0A2014',
 ];
 
 /**
- * Fondo de la sección principal (verde en el boceto):
+ * Fondo de la sección principal:
  * - Si hay 1 o más imágenes activas (en `assets/galeria` o subidas por el admin), pasan cada ~5 segundos
- *   con una transición suave y se difuminan hacia abajo hasta fundirse con el bloque de contacto y redes.
- * - Si no hay imágenes (o el admin las desactiva), mantiene el fondo homogéneo clásico de la app.
+ *   con una transición suave y un desenfoque/velo sutil para que el fondo se aprecie en toda la pantalla,
+ *   incluso detrás del bloque de reservas y redes sociales.
+ * - Si no hay imágenes (o el admin las desactiva), mantiene el fondo con ondulación suave de la app.
  */
 export function HeroGallery({ serverImages = [], enabled = true, intervalSec = 5, children }: Props) {
   const sources: (string | ImageSourcePropType)[] = enabled
@@ -70,14 +70,14 @@ export function HeroGallery({ serverImages = [], enabled = true, intervalSec = 5
       {hasImages ? (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           {safePrev !== null ? (
-            <Image source={sources[safePrev]} style={StyleSheet.absoluteFill} contentFit="cover" />
+            <Image source={sources[safePrev]} style={StyleSheet.absoluteFill} contentFit="cover" blurRadius={1.5} />
           ) : null}
           <Animated.View style={[StyleSheet.absoluteFill, { opacity: fadeAnim }]}>
-            <Image source={sources[safeIndex]} style={StyleSheet.absoluteFill} contentFit="cover" />
+            <Image source={sources[safeIndex]} style={StyleSheet.absoluteFill} contentFit="cover" blurRadius={1.5} />
           </Animated.View>
-          {/* Velo suave para que el logo, textos y botones se lean perfecto sobre cualquier foto */}
+          {/* Velo traslúcido suave para que la foto de fondo se siga viendo pero el texto sea legible */}
           <View style={styles.photoVeil} />
-          {/* Difuminado progresivo hacia el bloque inferior (contorno naranja -> sección de contacto) */}
+          {/* Sombreado inferior sutil y transparente para no tapar la imagen de fondo */}
           <View style={styles.bottomFadeWrap}>
             {FADE_STEPS.map((bg, i) => (
               <View key={i} style={[styles.fadeBand, { backgroundColor: bg }]} />
@@ -101,6 +101,7 @@ export function HeroGallery({ serverImages = [], enabled = true, intervalSec = 5
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
     position: 'relative',
     overflow: 'hidden',
   },
@@ -109,20 +110,21 @@ const styles = StyleSheet.create({
   },
   photoVeil: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(248, 244, 234, 0.72)',
+    backgroundColor: 'rgba(248, 244, 234, 0.56)',
   },
   bottomFadeWrap: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    height: 120,
+    height: 180,
     flexDirection: 'column',
   },
   fadeBand: {
     flex: 1,
   },
   foreground: {
+    flex: 1,
     position: 'relative',
     zIndex: 2,
   },
@@ -130,14 +132,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 6,
-    paddingBottom: 10,
+    paddingBottom: 6,
     zIndex: 3,
   },
   dot: {
     width: 7,
     height: 7,
     borderRadius: 4,
-    backgroundColor: 'rgba(217, 199, 154, 0.4)',
+    backgroundColor: 'rgba(217, 199, 154, 0.45)',
   },
   dotActive: {
     width: 18,

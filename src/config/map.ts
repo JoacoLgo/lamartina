@@ -9,11 +9,11 @@ export const TILE_LAYERS = {
   satellite: {
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     attribution: 'Imágenes © Esri, Maxar, Earthstar Geographics',
-    maxZoom: 19,
+    maxZoom: 18,
   },
   map: {
-    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-    attribution: '© Colaboradores de OpenStreetMap',
+    url: 'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    attribution: '© OpenStreetMap · © CARTO',
     maxZoom: 19,
   },
 } as const;

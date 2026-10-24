@@ -47,7 +47,9 @@ export function Button({ label, onPress, variant = 'primary', size = 'md', compa
         style,
       ]}>
       {icon ? <Ionicons name={icon} size={isSmall ? 17 : 20} color={color} /> : null}
-      <Text style={[styles.label, isSmall && styles.labelSmall, { color }]}>{label}</Text>
+      <Text numberOfLines={1} style={[styles.label, isSmall && styles.labelSmall, { color }]}>
+        {label}
+      </Text>
     </Pressable>
   );
 }

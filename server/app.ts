@@ -328,18 +328,32 @@ export function createApp(db: DB, options: AppOptions = {}) {
     return { ok: true };
   });
 
-  /** Confirmar identidad con contraseña para sumar a alguien a una ronda. Devuelve un permiso de 10 minutos. */
-  route('POST', '/auth/verify', 'user', async (ctx) => {
-    const target = getUserById(db, String(ctx.body.userId ?? ''));
-    const key = `verify|${ctx.user!.id}`;
+  /** Confirmar identidad con usuario/contraseña o userId/contraseña para sumar a alguien a una ronda. Devuelve un permiso de 10 minutos. */
+  route('POST', '/auth/verify', 'none', async (ctx) => {
+    const authed = authenticate(ctx.req);
+    const byUsername = typeof ctx.body.username === 'string' && ctx.body.username.trim().length > 0;
+    const target = byUsername
+      ? getUserByUsername(db, String(ctx.body.username).trim())
+      : getUserById(db, String(ctx.body.userId ?? ''));
+    const key = `verify|${authed?.user.id ?? ctx.ip}`;
     if (!confirmLimiter.allowed(key, now())) throw new HttpError(429, 'Demasiados intentos. Esperá unos minutos.', 'demasiados_intentos');
     const ok = await verifyPassword(String(ctx.body.password ?? ''), target?.pass_hash ?? DUMMY_HASH);
     if (!target || target.disabled || !ok) {
       confirmLimiter.fail(key, now());
-      throw new HttpError(401, 'Contraseña incorrecta.', 'credenciales');
+      throw new HttpError(
+        401,
+        byUsername ? 'Usuario o contraseña incorrectos.' : 'Contraseña incorrecta.',
+        'credenciales',
+      );
     }
     confirmLimiter.reset(key);
-    return { joinToken: signJoinToken(target.id, secret, now()), userId: target.id };
+    const sessionToken = !authed ? createSession(target.id) : undefined;
+    return {
+      joinToken: signJoinToken(target.id, secret, now()),
+      userId: target.id,
+      user: userDto(target),
+      token: sessionToken,
+    };
   });
 
   // Perfil --------------------------------------------------------------------
@@ -489,10 +503,19 @@ export function createApp(db: DB, options: AppOptions = {}) {
   });
 
   route('POST', '/rounds/:id/scores', 'user', (ctx) => {
-    const { round, excluded } = loadRound(ctx.params.id, ctx.user!, 'write');
+    const loaded = loadRound(ctx.params.id, ctx.user!, 'write');
+    let round = loaded.round;
+    const { excluded } = loaded;
     if (round.finishedAt) throw new HttpError(409, 'La ronda ya terminó.', 'ronda_terminada');
     const cells = ctx.body.cells;
     if (!Array.isArray(cells) || cells.length > 200) throw new HttpError(400, 'Cambios inválidos.', 'dato_invalido');
+    // Si llega algún puntaje de la Vuelta (hoyos 10..18) antes del pedido explícito de back-nine, extendemos automáticamente la ronda para no perder ningún hoyo.
+    if (
+      round.holes.length <= 9 &&
+      cells.some((c) => isObj(c) && Number(c.hole) > round.holes.length && Number(c.hole) <= 18)
+    ) {
+      round = extendRoundWithBackNine(round);
+    }
     const scores = { ...round.scores };
     for (const c of cells) {
       if (!isObj(c)) throw new HttpError(400, 'Cambio inválido.', 'dato_invalido');
@@ -702,10 +725,10 @@ export function createApp(db: DB, options: AppOptions = {}) {
 
   // ── administrador inicial ───────────────────────────────────────────────
   async function ensureAdmin(): Promise<void> {
-    if (!options.adminPassword) return;
     const username = options.adminUser ?? 'admin';
+    const password = options.adminPassword ?? 'admin';
     const existing = getUserByUsername(db, username);
-    const hash = await hashPassword(options.adminPassword);
+    const hash = await hashPassword(password);
     if (!existing) {
       db.prepare('INSERT INTO users (id, username, name, pass_hash, role, created_at) VALUES (?,?,?,?,?,?)').run(
         randomUUID(), username, 'Administrador', hash, 'admin', now(),

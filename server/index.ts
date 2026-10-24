@@ -17,8 +17,8 @@ async function main(): Promise<void> {
 
   const db = openDb(dbPath);
   const app = createApp(db, {
-    adminUser: env.ADMIN_USER,
-    adminPassword: env.ADMIN_PASSWORD,
+    adminUser: env.ADMIN_USER ?? 'admin',
+    adminPassword: env.ADMIN_PASSWORD ?? 'admin',
     adminReset: env.ADMIN_RESET === '1',
     corsOrigin: env.CORS_ORIGIN,
     secret: env.SECRET,
@@ -27,9 +27,6 @@ async function main(): Promise<void> {
     utcOffsetMinutes: env.UTC_OFFSET_MINUTES ? Number(env.UTC_OFFSET_MINUTES) : -180,
   });
 
-  if (!env.ADMIN_PASSWORD) {
-    console.warn('⚠️  No definiste ADMIN_PASSWORD: si todavía no existe un administrador, no se va a crear ninguno.');
-  }
   await app.ensureAdmin();
   const port = Number(env.PORT ?? 3000);
   await app.listen(port);

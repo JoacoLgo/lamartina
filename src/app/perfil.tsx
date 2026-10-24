@@ -133,10 +133,6 @@ function Profile({ me }: { me: Me }) {
         </Card>
       )}
 
-      <View style={styles.grid}>
-        <Button label="Mis partidas y contador" icon="time-outline" style={styles.flex} onPress={() => router.push('/historial')} />
-        <Button label="Ver ranking" variant="secondary" icon="trophy-outline" style={styles.flex} onPress={() => router.push('/ranking')} />
-      </View>
       {me.role === 'admin' ? <Button label="Administración de la cancha" variant="secondary" icon="settings-outline" onPress={() => router.push('/admin')} /> : null}
 
       <Card>

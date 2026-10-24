@@ -96,6 +96,11 @@ export interface Round {
   rev?: number;
   /** ¿Existe en el servidor? Las rondas de invitados sin sesión quedan solo en el celular. */
   remote?: boolean;
+  /**
+   * Token temporal de ronda cuando un jugador inicia sesión solo para anotar la partida
+   * desde "Nueva ronda" (en su celular o el de otra persona), sin dejar su cuenta abierta en el dispositivo.
+   */
+  roundToken?: string;
   /** Último error al sincronizar con el servidor (solo en el celular). */
   syncError?: string;
   /** Ronda de datos de ejemplo. */
@@ -105,4 +110,11 @@ export interface Round {
 /** Un lugar en la pantalla "Nueva ronda": un invitado o un jugador registrado. */
 export type PlayerSlot =
   | { kind: 'guest'; name: string }
-  | { kind: 'registered'; userId: string; name: string; accepted: boolean; joinToken?: string };
+  | {
+      kind: 'registered';
+      userId: string;
+      name: string;
+      accepted: boolean;
+      joinToken?: string;
+      roundAuthToken?: string;
+    };

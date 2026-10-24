@@ -25,11 +25,11 @@ import { standingsText } from '@/domain/stats';
 import { avatarUrl } from '@/lib/api';
 import { openUrl } from '@/lib/maps';
 import { useAppStore } from '@/store/useAppStore';
-import { colors, fonts, radius, shadow, space, type } from '@/theme';
+import { colors, fonts, radius, space, type } from '@/theme';
 
-const DOCKED_LOGO_SIZE = 80;
-const LARGE_LOGO_SIZE = 224;
-const DOCK_TOP = 10;
+const DOCKED_LOGO_SIZE = 108;
+const LARGE_LOGO_SIZE = 360;
+const DOCK_TOP = 6;
 const DOCK_LEFT = space.md;
 const DOCK_CENTER_X = DOCK_LEFT + DOCKED_LOGO_SIZE / 2;
 const DOCK_CENTER_Y = DOCK_TOP + DOCKED_LOGO_SIZE / 2;
@@ -66,6 +66,42 @@ export default function HomeScreen() {
   const invited = active ? pendingPlayerFor(active, me?.id) : undefined;
   const isAdmin = me?.role === 'admin';
   const v = config.venue;
+
+  const phrases = [
+    '¿Listo para jugar?',
+    me ? `¡Bienvenido, ${me.displayName}!` : '¡Bienvenido a La Martina!',
+    "¡Vamo' a patear!",
+    '¿Sale una ronda hoy?',
+    '¡A buscar el par!',
+    '¡Hoy entra en uno!',
+    'Apuntá al green y pateá',
+    'Un gran día para bajar el par',
+    'Desafiá el ranking de la cancha',
+    'Precisión, viento y buena pegada',
+    '¿Quién invita si hace bogey?',
+    'Armá la ronda y a la cancha',
+  ];
+  const [phraseIdx, setPhraseIdx] = useState(0);
+  const phraseAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      Animated.timing(phraseAnim, {
+        toValue: 0,
+        duration: 520,
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (!finished) return;
+        setPhraseIdx((i) => (i + 1) % phrases.length);
+        Animated.timing(phraseAnim, {
+          toValue: 1,
+          duration: 580,
+          useNativeDriver: true,
+        }).start();
+      });
+    }, 6500);
+    return () => clearInterval(timer);
+  }, [phraseAnim, phrases.length]);
 
   const [stageSize, setStageSize] = useState<{ width: number; height: number } | null>(null);
   const [introComplete, setIntroComplete] = useState(hasPlayedIntroOnce);
@@ -130,28 +166,34 @@ export default function HomeScreen() {
   const effectiveWidth = stageSize?.width ?? windowDims.width;
   const effectiveHeight = stageSize?.height ?? Math.max(540, windowDims.height - 64);
 
-  // Centro inicial del logo (mitad de pantalla sobre la unión blanco/onda verde) -> Centro final (esquina sup. izquierda)
+  // Las palabras "La Martina / FOOTGOLF" inician grandes en el centro y viajan hasta encajar dentro del escudo vacío en la esquina
   const startX = Math.max(0, effectiveWidth / 2 - DOCK_CENTER_X);
   const startY = Math.max(90, effectiveHeight * 0.36 - DOCK_CENTER_Y);
-  const dockedScale = DOCKED_LOGO_SIZE / LARGE_LOGO_SIZE;
+  const dockedWordScale = DOCKED_LOGO_SIZE / LARGE_LOGO_SIZE;
 
-  const logoTranslateX = logoProgress.interpolate({
+  const wordTranslateX = logoProgress.interpolate({
     inputRange: [0, 1],
     outputRange: [startX, 0],
   });
-  const logoTranslateY = logoProgress.interpolate({
+  const wordTranslateY = logoProgress.interpolate({
     inputRange: [0, 1],
     outputRange: [startY, 0],
   });
-  const logoMoveScale = logoProgress.interpolate({
+  const wordMoveScale = logoProgress.interpolate({
     inputRange: [0, 1],
-    outputRange: [1, dockedScale],
+    outputRange: [1, dockedWordScale],
   });
-  const logoEntranceScale = logoAppear.interpolate({
+  const wordEntranceScale = logoAppear.interpolate({
     inputRange: [0, 1],
     outputRange: [0.92, 1],
   });
-  const combinedLogoScale = Animated.multiply(logoMoveScale, logoEntranceScale);
+  const combinedWordScale = Animated.multiply(wordMoveScale, wordEntranceScale);
+
+  // El escudo vacío permanece invisible al inicio y aparece de a poco justo antes de que las letras terminen de reducirse y encajar adentro suyo
+  const emptyShieldOpacity = logoProgress.interpolate({
+    inputRange: [0, 0.72, 0.98, 1],
+    outputRange: [0, 0, 1, 1],
+  });
 
   const contentOpacity = contentProgress;
   const contentSlideY = contentProgress.interpolate({
@@ -204,49 +246,70 @@ export default function HomeScreen() {
         </Animated.View>
       </View>
 
-      {/* Escenario principal con fondo crema arriba y ondulación verde abajo */}
+      {/* Escenario principal con fondo crema arriba y ondulación verde traslúcida abajo */}
       <View style={styles.stage} onLayout={onStageLayout}>
-        {/* Fondo con ondulación verde en la parte inferior para contraste con el logo y secciones */}
+        {/* Fondo base con ondulación suave (visible también detrás de reservas y redes) */}
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <View style={styles.upperCreamBg} />
           <View style={styles.lowerGreenBg}>
-            {/* Ondulación suave (tres curvas superpuestas en tonos verde y dorado del logo) */}
             <View style={styles.waveRimGold} />
             <View style={styles.waveCrestMoss} />
             <View style={styles.waveMainForest} />
           </View>
         </View>
 
-        {/* Logo animado en alta resolución completa: inicia grande en el centro y se minimiza con fluidez hacia la esquina superior izquierda */}
-        <Animated.View
-          pointerEvents="box-none"
-          style={[
-            styles.floatingLogoWrap,
-            {
-              opacity: logoAppear,
-              transform: [
-                { translateX: logoTranslateX },
-                { translateY: logoTranslateY },
-                { scale: combinedLogoScale },
-              ],
-            },
-          ]}>
-          <Pressable
-            accessibilityRole="imagebutton"
-            accessibilityLabel="Logo de La Martina Footgolf (tocar para repetir animación)"
-            onPress={playIntroAnimation}
-            style={styles.logoHalo}>
-            <Logo size={LARGE_LOGO_SIZE} />
-          </Pressable>
-        </Animated.View>
+        <HeroGallery serverImages={v.heroImages} enabled={v.heroEnabled} intervalSec={v.heroIntervalSec}>
+          {/* Escudo con la banda verde VACÍA en la esquina superior izquierda: espera a que las palabras se unan adentro suyo */}
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.dockedShieldWrap,
+              {
+                opacity: emptyShieldOpacity,
+              },
+            ]}>
+            <Logo size={DOCKED_LOGO_SIZE} variant="empty" />
+          </Animated.View>
 
-        <ScrollView
-          bounces={false}
-          showsVerticalScrollIndicator={false}
-          pointerEvents={introComplete ? 'auto' : 'none'}
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-          {/* PARTE SUPERIOR (BLANCO / CREMA O CARRUSEL DE FOTOS DEL ADMIN) */}
-          <HeroGallery serverImages={v.heroImages} enabled={v.heroEnabled} intervalSec={v.heroIntervalSec}>
+          {/* Presentación inicial: SOLO las palabras arqueadas "La Martina", línea curva y "FOOTGOLF" del logo que viajan y se colocan dentro del escudo vacío */}
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.floatingWordmarkWrap,
+              {
+                opacity: logoAppear,
+                transform: [
+                  { translateX: wordTranslateX },
+                  { translateY: wordTranslateY },
+                  { scale: combinedWordScale },
+                ],
+              },
+            ]}>
+            <Logo size={LARGE_LOGO_SIZE} variant="letters" />
+          </Animated.View>
+
+          {/* Encabezado fijo arriba (Logo + Clima): el logo queda inmóvil en la esquina y el clima despliega su lectura superpuesta */}
+          <Animated.View
+            pointerEvents={introComplete ? 'box-none' : 'none'}
+            style={[
+              styles.fixedTopHeaderWrap,
+              {
+                opacity: contentOpacity,
+                transform: [{ translateY: contentSlideY }],
+              },
+            ]}>
+            <View style={styles.topHeaderRow}>
+              <View style={styles.logoDockPlaceholder} pointerEvents="none" />
+              <WeatherCompass coords={v.gate} />
+            </View>
+          </Animated.View>
+
+          <ScrollView
+            bounces={false}
+            overScrollMode="never"
+            showsVerticalScrollIndicator={false}
+            pointerEvents={introComplete ? 'auto' : 'none'}
+            contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom, 10) }]}>
             <Animated.View
               style={[
                 styles.upperContent,
@@ -255,20 +318,25 @@ export default function HomeScreen() {
                   transform: [{ translateY: contentSlideY }],
                 },
               ]}>
-              {/* Fila 1: Espacio del logo minimizado a la izquierda + Rosa de los vientos y clima alargado a la derecha */}
-              <View style={styles.topHeaderRow}>
-                <View style={styles.logoDockPlaceholder} />
-                <WeatherCompass coords={v.gate} />
-              </View>
-
-              {/* Fila 2: Bienvenida y descripción concisa */}
+              {/* Cartel de bienvenida dinámico y compacto para todos */}
               <View style={styles.welcomeBlock}>
-                <Text style={styles.welcomeTitle}>
-                  {me ? `¡Bienvenido, ${me.displayName}!` : 'La Martina Footgolf'}
-                </Text>
-                <Text style={styles.tagline} numberOfLines={2}>
-                  {v.tagline || 'Anotá tu ronda, seguí tu puntaje y competí en el ranking de la cancha.'}
-                </Text>
+                <Animated.Text
+                  style={[
+                    styles.welcomeTitle,
+                    {
+                      opacity: phraseAnim,
+                      transform: [
+                        {
+                          translateY: phraseAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [4, 0],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}>
+                  {phrases[phraseIdx % phrases.length]}
+                </Animated.Text>
               </View>
 
               {config.announcement ? (
@@ -286,7 +354,7 @@ export default function HomeScreen() {
                 </Text>
               ) : null}
 
-              {/* Acción principal: Empezar a jugar o Continuar ronda */}
+              {/* Acción principal: Empezar a jugar centrado y proporcionado, o Continuar ronda */}
               {active ? (
                 <Pressable onPress={openActive} style={styles.activeCompactCard}>
                   <View style={styles.flex}>
@@ -300,28 +368,39 @@ export default function HomeScreen() {
                   <Button label={invited ? 'Aceptar' : 'Continuar'} icon="play" size="sm" onPress={openActive} />
                 </Pressable>
               ) : (
-                <Button label="Empezar a jugar" icon="football-outline" onPress={() => router.push('/ronda/nueva')} />
+                <View style={styles.playButtonRow}>
+                  <Button
+                    label="Empezar a jugar"
+                    icon="football-outline"
+                    onPress={() => router.push('/ronda/nueva')}
+                    style={styles.playButtonCentered}
+                  />
+                </View>
               )}
 
-              {/* Accesos rápidos en una sola fila compacta */}
+              {/* Accesos rápidos:
+                  - Con sesión: Mi trayectoria | Ranking | Cómo se juega (+ Admin)
+                  - Sin sesión: Ranking | Cómo se juega */}
               <View style={styles.tilesRow}>
+                {me ? (
+                  <Tile
+                    icon="stats-chart-outline"
+                    label="Mi trayectoria"
+                    onPress={() => router.push('/historial')}
+                  />
+                ) : null}
                 <Tile icon="trophy-outline" label="Ranking" onPress={() => router.push('/ranking')} />
-                <Tile
-                  icon="time-outline"
-                  label="Mis partidas"
-                  onPress={() => router.push(me ? '/historial' : '/ingresar')}
-                />
                 <Tile icon="book-outline" label="Cómo se juega" onPress={() => router.push('/reglas')} />
                 {isAdmin ? <Tile icon="settings-outline" label="Admin" onPress={() => router.push('/admin')} /> : null}
               </View>
 
-              {/* Invitación a crear perfil con la frase completa sin cortarse */}
+              {/* Invitación a crear perfil cuando juega como invitado */}
               {!me ? (
                 <View style={styles.guestStrip}>
                   <View style={styles.flex}>
                     <Text style={styles.guestStripTitle}>Jugás como invitado</Text>
                     <Text style={styles.guestStripSub}>
-                      Creá tu perfil para sumar al ranking y guardar tu historial de partidas.
+                      Creá tu perfil para sumar al ranking y seguir toda tu trayectoria.
                     </Text>
                   </View>
                   <Button
@@ -338,104 +417,104 @@ export default function HomeScreen() {
                 </View>
               ) : null}
             </Animated.View>
-          </HeroGallery>
 
-          {/* PARTE INFERIOR SOBRE LA ONDULACIÓN VERDE: RESERVAS, REDES SOCIALES Y EQUIPO LOCAL */}
-          <Animated.View
-            style={[
-              styles.lowerGreenContent,
-              {
-                opacity: contentOpacity,
-                transform: [{ translateY: contentSlideY }],
-              },
-            ]}>
-            <View style={styles.footerCard}>
-              <View style={styles.footerTopRow}>
-                <View style={styles.flex}>
-                  <View style={styles.footerHeader}>
-                    <Ionicons name="calendar-outline" size={14} color={colors.goldLight} />
-                    <Text style={styles.footerLabel}>Reservas, consultas y redes</Text>
-                  </View>
-                  <Text style={styles.footerTitle}>{v.name} Footgolf</Text>
-                  <Text style={styles.footerSub} numberOfLines={1}>
-                    {v.address}
-                    {v.hours ? ` · ${v.hours}` : ''}
-                  </Text>
-                </View>
-
-                {/* Botones rápidos de contacto (WhatsApp / Teléfono) */}
-                <View style={styles.contactButtonsWrap}>
-                  {v.whatsapp ? (
-                    <Pressable
-                      accessibilityRole="button"
-                      onPress={() => openUrl(`https://wa.me/${v.whatsapp}`)}
-                      style={({ pressed }) => [styles.whatsappPill, pressed && { opacity: 0.85 }]}>
-                      <Ionicons name="logo-whatsapp" size={16} color={colors.forestDeep} />
-                      <Text style={styles.whatsappPillText}>WhatsApp</Text>
-                    </Pressable>
-                  ) : null}
-                  {v.phone ? (
-                    <Pressable
-                      accessibilityRole="button"
-                      onPress={() => openUrl(`tel:${v.phone.replace(/\s/g, '')}`)}
-                      style={({ pressed }) => [styles.phonePill, pressed && { opacity: 0.85 }]}>
-                      <Ionicons name="call-outline" size={15} color={colors.goldLight} />
-                      <Text style={styles.phonePillText}>{v.phone}</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-              </View>
-
-              {/* Redes sociales de La Martina en fila horizontal compacta */}
-              <View style={styles.socialRow}>
-                {v.instagram ? (
-                  <Pressable
-                    accessibilityRole="link"
-                    onPress={() => openUrl(v.instagram)}
-                    style={({ pressed }) => [styles.socialChip, pressed && { opacity: 0.85 }]}>
-                    <Ionicons name="logo-instagram" size={17} color={colors.goldLight} />
-                    <Text style={styles.socialHandle} numberOfLines={1}>
-                      @lamartinafootgolf
-                    </Text>
-                  </Pressable>
-                ) : null}
-
-                {v.tiktok ? (
-                  <Pressable
-                    accessibilityRole="link"
-                    onPress={() => openUrl(v.tiktok)}
-                    style={({ pressed }) => [styles.socialChip, pressed && { opacity: 0.85 }]}>
-                    <Ionicons name="logo-tiktok" size={16} color={colors.goldLight} />
-                    <Text style={styles.socialHandle} numberOfLines={1}>
-                      @lamartinafootgolf
-                    </Text>
-                  </Pressable>
-                ) : null}
-              </View>
-
-              {/* Equipo local: Punteros F.C. */}
-              {v.teamName ? (
-                <Pressable
-                  accessibilityRole="link"
-                  onPress={() => v.teamInstagram && openUrl(v.teamInstagram)}
-                  style={({ pressed }) => [styles.teamBanner, pressed && { opacity: 0.9 }]}>
-                  <View style={styles.teamBadgeIcon}>
-                    <Ionicons name="shield-checkmark" size={18} color={colors.forestDeep} />
-                  </View>
+            {/* PARTE INFERIOR TRASLÚCIDA: RESERVAS, REDES SOCIALES Y EQUIPO LOCAL (deja ver el fondo) */}
+            <Animated.View
+              style={[
+                styles.lowerGreenContent,
+                {
+                  opacity: contentOpacity,
+                  transform: [{ translateY: contentSlideY }],
+                },
+              ]}>
+              <View style={styles.footerCard}>
+                <View style={styles.footerTopRow}>
                   <View style={styles.flex}>
-                    <Text style={styles.teamLabel} numberOfLines={1}>
-                      {v.teamDescription || 'El primer equipo puntaltense de Footgolf'}
-                    </Text>
-                    <Text style={styles.teamName} numberOfLines={1}>
-                      {v.teamName} <Text style={styles.teamHandleInline}>· @punteros.f.c</Text>
+                    <View style={styles.footerHeader}>
+                      <Ionicons name="calendar-outline" size={13} color={colors.goldLight} />
+                      <Text style={styles.footerLabel}>Reservas y redes</Text>
+                    </View>
+                    <Text style={styles.footerTitle}>{v.name} Footgolf</Text>
+                    <Text style={styles.footerSub} numberOfLines={1}>
+                      {v.address}
+                      {v.hours ? ` · ${v.hours}` : ''}
                     </Text>
                   </View>
-                  <Ionicons name="logo-instagram" size={18} color={colors.goldLight} />
-                </Pressable>
-              ) : null}
-            </View>
-          </Animated.View>
-        </ScrollView>
+
+                  {/* Botones rápidos de contacto (WhatsApp / Teléfono) */}
+                  <View style={styles.contactButtonsWrap}>
+                    {v.whatsapp ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={() => openUrl(`https://wa.me/${v.whatsapp}`)}
+                        style={({ pressed }) => [styles.whatsappPill, pressed && { opacity: 0.85 }]}>
+                        <Ionicons name="logo-whatsapp" size={15} color={colors.forestDeep} />
+                        <Text style={styles.whatsappPillText}>WhatsApp</Text>
+                      </Pressable>
+                    ) : null}
+                    {v.phone ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={() => openUrl(`tel:${v.phone.replace(/\s/g, '')}`)}
+                        style={({ pressed }) => [styles.phonePill, pressed && { opacity: 0.85 }]}>
+                        <Ionicons name="call-outline" size={14} color={colors.goldLight} />
+                        <Text style={styles.phonePillText}>{v.phone}</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                </View>
+
+                {/* Redes sociales de La Martina en fila horizontal traslúcida */}
+                <View style={styles.socialRow}>
+                  {v.instagram ? (
+                    <Pressable
+                      accessibilityRole="link"
+                      onPress={() => openUrl(v.instagram)}
+                      style={({ pressed }) => [styles.socialChip, pressed && { opacity: 0.85 }]}>
+                      <Ionicons name="logo-instagram" size={16} color={colors.goldLight} />
+                      <Text style={styles.socialHandle} numberOfLines={1}>
+                        @lamartinafootgolf
+                      </Text>
+                    </Pressable>
+                  ) : null}
+
+                  {v.tiktok ? (
+                    <Pressable
+                      accessibilityRole="link"
+                      onPress={() => openUrl(v.tiktok)}
+                      style={({ pressed }) => [styles.socialChip, pressed && { opacity: 0.85 }]}>
+                      <Ionicons name="logo-tiktok" size={15} color={colors.goldLight} />
+                      <Text style={styles.socialHandle} numberOfLines={1}>
+                        @lamartinafootgolf
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+
+                {/* Equipo local: Punteros F.C. */}
+                {v.teamName ? (
+                  <Pressable
+                    accessibilityRole="link"
+                    onPress={() => v.teamInstagram && openUrl(v.teamInstagram)}
+                    style={({ pressed }) => [styles.teamBanner, pressed && { opacity: 0.9 }]}>
+                    <View style={styles.teamBadgeIcon}>
+                      <Ionicons name="shield-checkmark" size={16} color={colors.forestDeep} />
+                    </View>
+                    <View style={styles.flex}>
+                      <Text style={styles.teamLabel} numberOfLines={1}>
+                        {v.teamDescription || 'El primer equipo puntaltense de Footgolf'}
+                      </Text>
+                      <Text style={styles.teamName} numberOfLines={1}>
+                        {v.teamName} <Text style={styles.teamHandleInline}>· @punteros.f.c</Text>
+                      </Text>
+                    </View>
+                    <Ionicons name="logo-instagram" size={17} color={colors.goldLight} />
+                  </Pressable>
+                ) : null}
+              </View>
+            </Animated.View>
+          </ScrollView>
+        </HeroGallery>
       </View>
     </View>
   );
@@ -497,12 +576,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   upperCreamBg: {
-    height: 360,
+    height: 390,
     backgroundColor: colors.creamLight,
   },
   lowerGreenBg: {
     flex: 1,
-    backgroundColor: colors.forestDeep,
+    backgroundColor: 'rgba(10, 32, 20, 0.72)',
     position: 'relative',
   },
   waveRimGold: {
@@ -514,7 +593,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 280,
     borderTopRightRadius: 220,
     backgroundColor: colors.gold,
-    opacity: 0.45,
+    opacity: 0.35,
     transform: [{ rotate: '-2deg' }],
   },
   waveCrestMoss: {
@@ -526,7 +605,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 240,
     borderTopRightRadius: 300,
     backgroundColor: colors.moss,
-    opacity: 0.55,
+    opacity: 0.42,
     transform: [{ rotate: '1.5deg' }],
   },
   waveMainForest: {
@@ -537,61 +616,78 @@ const styles = StyleSheet.create({
     bottom: 0,
     borderTopLeftRadius: 260,
     borderTopRightRadius: 260,
-    backgroundColor: colors.forestDeep,
+    backgroundColor: 'rgba(10, 32, 20, 0.68)',
   },
-  floatingLogoWrap: {
+  dockedShieldWrap: {
+    position: 'absolute',
+    top: DOCK_TOP,
+    left: DOCK_LEFT,
+    width: DOCKED_LOGO_SIZE,
+    height: DOCKED_LOGO_SIZE,
+    zIndex: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  floatingWordmarkWrap: {
     position: 'absolute',
     top: DOCK_CENTER_Y - LARGE_LOGO_SIZE / 2,
     left: DOCK_CENTER_X - LARGE_LOGO_SIZE / 2,
     width: LARGE_LOGO_SIZE,
     height: LARGE_LOGO_SIZE,
-    zIndex: 40,
+    zIndex: 41,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
   },
-  logoHalo: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: 'flex-start',
-    gap: 10,
-  },
-  upperContent: {
+  fixedTopHeaderWrap: {
     paddingHorizontal: space.md,
-    paddingTop: 10,
+    paddingTop: DOCK_TOP,
     paddingBottom: 4,
-    gap: 10,
+    zIndex: 45,
   },
   topHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    justifyContent: 'space-between',
+    gap: 10,
     minHeight: DOCKED_LOGO_SIZE,
-    zIndex: 30,
+    zIndex: 45,
   },
   logoDockPlaceholder: {
     width: DOCKED_LOGO_SIZE,
     height: DOCKED_LOGO_SIZE,
   },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  upperContent: {
+    paddingHorizontal: space.md,
+    paddingTop: 2,
+    paddingBottom: 4,
+    gap: 10,
+  },
   welcomeBlock: {
-    gap: 2,
-    paddingHorizontal: 2,
+    alignItems: 'center',
+    paddingVertical: 2,
   },
   welcomeTitle: {
     fontFamily: fonts.serif,
     fontSize: 22,
     fontWeight: '700',
     color: colors.ink,
+    textAlign: 'center',
   },
-  tagline: {
-    fontFamily: fonts.serif,
-    fontSize: 14,
-    lineHeight: 19,
-    color: colors.muted,
+  playButtonRow: {
+    alignItems: 'center',
+    paddingVertical: 2,
+  },
+  playButtonCentered: {
+    alignSelf: 'center',
+    paddingHorizontal: 32,
+    minWidth: 216,
+    borderRadius: radius.pill,
   },
   announcement: {
     flexDirection: 'row',
@@ -600,8 +696,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: radius.md,
-    backgroundColor: colors.cream,
-    borderWidth: 1.5,
+    backgroundColor: 'rgba(242, 235, 219, 0.88)',
+    borderWidth: 1,
     borderColor: colors.gold,
   },
   announcementText: {
@@ -622,8 +718,8 @@ const styles = StyleSheet.create({
     gap: space.sm,
     padding: 10,
     borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    borderWidth: 2,
+    backgroundColor: 'rgba(255, 253, 248, 0.92)',
+    borderWidth: 1.5,
     borderColor: colors.gold,
   },
   activeLabel: {
@@ -649,16 +745,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 4,
     borderRadius: radius.md,
-    backgroundColor: 'rgba(255, 253, 248, 0.96)',
+    backgroundColor: 'rgba(255, 253, 248, 0.86)',
     borderWidth: 1,
     borderColor: colors.line,
-    ...shadow,
   },
   tileIconWrap: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: colors.cream,
+    backgroundColor: 'rgba(242, 235, 219, 0.9)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -675,7 +770,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: radius.md,
-    backgroundColor: 'rgba(255, 253, 248, 0.96)',
+    backgroundColor: 'rgba(255, 253, 248, 0.84)',
     borderWidth: 1,
     borderColor: colors.line,
   },
@@ -696,16 +791,15 @@ const styles = StyleSheet.create({
   lowerGreenContent: {
     paddingHorizontal: space.md,
     paddingTop: 2,
-    paddingBottom: 8,
+    paddingBottom: 6,
   },
   footerCard: {
     borderRadius: radius.lg,
-    backgroundColor: colors.forest,
-    borderWidth: 1.5,
-    borderColor: colors.gold,
-    padding: 12,
-    gap: 8,
-    ...shadow,
+    backgroundColor: 'rgba(15, 43, 28, 0.54)',
+    borderWidth: 1,
+    borderColor: 'rgba(217, 199, 154, 0.38)',
+    padding: 11,
+    gap: 7,
   },
   footerTopRow: {
     flexDirection: 'row',
@@ -719,22 +813,22 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   footerLabel: {
-    fontSize: 9.5,
+    fontSize: 9,
     fontWeight: '800',
-    letterSpacing: 1.4,
+    letterSpacing: 1.3,
     textTransform: 'uppercase',
     color: colors.goldLight,
   },
   footerTitle: {
     fontFamily: fonts.serif,
-    fontSize: 18,
+    fontSize: 16.5,
     fontWeight: '700',
     color: colors.cream,
   },
   footerSub: {
-    fontSize: 12,
+    fontSize: 11.5,
     color: colors.cream,
-    opacity: 0.88,
+    opacity: 0.84,
   },
   contactButtonsWrap: {
     flexDirection: 'row',
@@ -744,33 +838,33 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    paddingVertical: 7,
-    paddingHorizontal: 11,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
     borderRadius: radius.pill,
-    backgroundColor: colors.goldLight,
+    backgroundColor: 'rgba(217, 199, 154, 0.88)',
     borderWidth: 1,
     borderColor: colors.gold,
   },
   whatsappPillText: {
     color: colors.forestDeep,
     fontWeight: '800',
-    fontSize: 12,
+    fontSize: 11.5,
   },
   phonePill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingVertical: 7,
-    paddingHorizontal: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 9,
     borderRadius: radius.pill,
-    backgroundColor: colors.forestDeep,
+    backgroundColor: 'rgba(10, 32, 20, 0.42)',
     borderWidth: 1,
-    borderColor: colors.gold,
+    borderColor: 'rgba(217, 199, 154, 0.45)',
   },
   phonePillText: {
     color: colors.cream,
     fontWeight: '700',
-    fontSize: 12,
+    fontSize: 11.5,
   },
   socialRow: {
     flexDirection: 'row',
@@ -782,40 +876,40 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    paddingVertical: 7,
+    paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: radius.md,
-    backgroundColor: colors.forestDeep,
+    backgroundColor: 'rgba(10, 32, 20, 0.38)',
     borderWidth: 1,
-    borderColor: colors.gold,
+    borderColor: 'rgba(217, 199, 154, 0.36)',
   },
   socialHandle: {
     color: colors.cream,
     fontWeight: '700',
-    fontSize: 12,
+    fontSize: 11.5,
   },
   teamBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingVertical: 8,
+    gap: 9,
+    paddingVertical: 7,
     paddingHorizontal: 10,
     borderRadius: radius.md,
-    backgroundColor: colors.forestDeep,
-    borderWidth: 1.5,
-    borderColor: colors.gold,
+    backgroundColor: 'rgba(10, 32, 20, 0.42)',
+    borderWidth: 1,
+    borderColor: 'rgba(217, 199, 154, 0.42)',
   },
   teamBadgeIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.goldLight,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(217, 199, 154, 0.88)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   teamLabel: {
     color: colors.goldLight,
-    fontSize: 9.5,
+    fontSize: 9,
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
@@ -823,12 +917,12 @@ const styles = StyleSheet.create({
   teamName: {
     fontFamily: fonts.serif,
     color: colors.cream,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
   },
   teamHandleInline: {
     fontFamily: 'System',
-    fontSize: 11.5,
+    fontSize: 11,
     fontWeight: '600',
     color: colors.goldLight,
   },
