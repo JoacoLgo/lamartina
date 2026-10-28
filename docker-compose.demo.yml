@@ -1,0 +1,16 @@
+services:
+  lamartina:
+    build: .
+    restart: "no"
+    environment:
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Definí ADMIN_PASSWORD en el archivo .env}
+      TRUST_PROXY: "1"
+    volumes:
+      - ./data/demo:/data
+      - ./data/demo-galeria:/app/assets/galeria
+  tunel:
+    image: cloudflare/cloudflared:latest
+    restart: "no"
+    command: tunnel --no-autoupdate --url http://lamartina:3000
+    depends_on:
+      - lamartina
