@@ -724,9 +724,17 @@ export function createApp(db: DB, options: AppOptions = {}) {
   });
 
   // ── administrador inicial ───────────────────────────────────────────────
+  // Sin ADMIN_PASSWORD no se crea ni se resetea el administrador: nunca hay una clave por defecto.
   async function ensureAdmin(): Promise<void> {
     const username = options.adminUser ?? 'admin';
-    const password = options.adminPassword ?? 'admin';
+    const password = options.adminPassword;
+    if (!password) {
+      console.warn(
+        `AVISO: falta ADMIN_PASSWORD. No se creó ni se modificó el administrador "${username}". ` +
+          'Definila (ver server/README.md) y reiniciá el servidor.',
+      );
+      return;
+    }
     const existing = getUserByUsername(db, username);
     const hash = await hashPassword(password);
     if (!existing) {

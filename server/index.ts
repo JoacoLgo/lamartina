@@ -18,7 +18,7 @@ async function main(): Promise<void> {
   const db = openDb(dbPath);
   const app = createApp(db, {
     adminUser: env.ADMIN_USER ?? 'admin',
-    adminPassword: env.ADMIN_PASSWORD ?? 'admin',
+    adminPassword: env.ADMIN_PASSWORD,
     adminReset: env.ADMIN_RESET === '1',
     corsOrigin: env.CORS_ORIGIN,
     secret: env.SECRET,

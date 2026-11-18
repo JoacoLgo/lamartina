@@ -19,9 +19,9 @@ La primera vez crea el usuario administrador (`admin`, con la clave que pusiste)
 
 | Variable | Para qué sirve | Por defecto |
 |---|---|---|
-| `ADMIN_PASSWORD` | Clave del administrador inicial (se crea al arrancar si todavía no hay uno) | — |
+| `ADMIN_PASSWORD` | Clave del administrador inicial (se crea al arrancar si todavía no hay uno). **Obligatoria:** si falta, el servidor arranca igual pero no crea ni modifica el administrador, y lo avisa en la consola | — |
 | `ADMIN_USER` | Usuario del administrador inicial | `admin` |
-| `ADMIN_RESET=1` | Pisa la clave del administrador con `ADMIN_PASSWORD` (si se olvidó). Usarlo una vez y sacarlo | — |
+| `ADMIN_RESET=1` | Pisa la clave del administrador con `ADMIN_PASSWORD` (si se olvidó). Sin `ADMIN_PASSWORD` no hace nada. Usarlo una vez y sacarlo | — |
 | `PORT` | Puerto | `3000` |
 | `DB_PATH` | Archivo de la base de datos | `data/footgolf.db` |
 | `STATIC_DIR` | Carpeta con la app web (`npm run build:web` → `dist`). Si se define, el servidor también sirve la app | — |
